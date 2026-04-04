@@ -211,7 +211,7 @@ public class FinancialPlanStorageService {
             normalizeText(sectionTitles.creditAccounts(), DEFAULT_SECTION_TITLES.creditAccounts()),
             normalizeText(sectionTitles.debitExpenses(), DEFAULT_SECTION_TITLES.debitExpenses()),
             normalizeText(sectionTitles.incomeSchedule(), DEFAULT_SECTION_TITLES.incomeSchedule()),
-            normalizeText(sectionTitles.incomeScheduleChase(), DEFAULT_SECTION_TITLES.incomeScheduleChase())
+            normalizeText(sectionTitles.defaultBank(), DEFAULT_SECTION_TITLES.defaultBank())
         );
     }
 

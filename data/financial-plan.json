@@ -1,54 +1,134 @@
 {
   "creditAccounts" : [ {
-    "id" : "credit-1775290799033",
+    "id" : "credit-1775292771032",
     "name" : "Apple Card (2568)",
-    "availableCredit" : 1200.0,
-    "nextPaymentDate" : "2026-04-07",
-    "paidThisMonth" : false,
-    "statementCycledAfterPayment" : false,
-    "lastStatementDate" : "2026-03-09",
-    "lastStatementBalance" : 200.0,
-    "creditLimit" : 5000.0
+    "availableCredit" : 3969.42,
+    "nextPaymentDate" : "2026-04-30",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : true,
+    "lastStatementDate" : "2026-03-31",
+    "lastStatementBalance" : 30.58,
+    "creditLimit" : 4000.0
   }, {
-    "id" : "credit-1775290800416",
+    "id" : "credit-1775292779716",
     "name" : "SamsClub Store Card (5873)",
-    "availableCredit" : 0.0,
-    "nextPaymentDate" : "2026-03-31",
+    "availableCredit" : 11297.0,
+    "nextPaymentDate" : "2026-04-23",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : true,
+    "lastStatementDate" : "2026-03-31",
+    "lastStatementBalance" : 444.19,
+    "creditLimit" : 12000.0
+  }, {
+    "id" : "credit-1775292780172",
+    "name" : "American Express (72022)",
+    "availableCredit" : 8221.0,
+    "nextPaymentDate" : "2026-03-28",
     "paidThisMonth" : true,
     "statementCycledAfterPayment" : false,
-    "lastStatementDate" : "2026-04-02",
-    "lastStatementBalance" : 500.0,
-    "creditLimit" : 6000.0
+    "lastStatementDate" : "2026-03-08",
+    "lastStatementBalance" : 115.66,
+    "creditLimit" : 8300.0
   }, {
-    "id" : "credit-1775290801035",
-    "name" : "American Express (72022)",
-    "availableCredit" : 0.0,
+    "id" : "credit-1775292780485",
+    "name" : "Amazon Store Card (5108) - amazon.syf.com",
+    "availableCredit" : 2700.0,
+    "nextPaymentDate" : "2026-04-01",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-06",
+    "lastStatementBalance" : 0.0,
+    "creditLimit" : 2700.0
+  }, {
+    "id" : "credit-1775292780627",
+    "name" : "Wellsfargo (4256)",
+    "availableCredit" : 16561.0,
+    "nextPaymentDate" : "2026-04-02",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-08",
+    "lastStatementBalance" : 1669.45,
+    "creditLimit" : 18000.0
+  }, {
+    "id" : "credit-1775292780923",
+    "name" : "Target (0969)",
+    "availableCredit" : 7218.0,
+    "nextPaymentDate" : "2026-04-03",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-04-03",
+    "lastStatementBalance" : 709.96,
+    "creditLimit" : 7400.0
+  }, {
+    "id" : "credit-1775292781056",
+    "name" : "Barclays Frontier (5640)",
+    "availableCredit" : 8940.09,
+    "nextPaymentDate" : "2026-04-03",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-06",
+    "lastStatementBalance" : 670.23,
+    "creditLimit" : 10000.0
+  }, {
+    "id" : "credit-1775292781209",
+    "name" : "Fidelity (9857)",
+    "availableCredit" : 29723.52,
+    "nextPaymentDate" : "2026-04-06",
+    "paidThisMonth" : true,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-09",
+    "lastStatementBalance" : 188.49,
+    "creditLimit" : 30000.0
+  }, {
+    "id" : "credit-1775292781368",
+    "name" : "Citi Bestbuy (5026)",
+    "availableCredit" : 4000.0,
+    "nextPaymentDate" : "2026-04-05",
+    "paidThisMonth" : false,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-11",
+    "lastStatementBalance" : 0.0,
+    "creditLimit" : 4000.0
+  }, {
+    "id" : "credit-1775292897763",
+    "name" : "BOA Spirit (2795)",
+    "availableCredit" : 28270.06,
     "nextPaymentDate" : "2026-04-08",
     "paidThisMonth" : false,
     "statementCycledAfterPayment" : false,
-    "lastStatementDate" : "2026-03-10",
-    "lastStatementBalance" : 1200.0,
-    "creditLimit" : 12000.0
+    "lastStatementDate" : "2026-03-11",
+    "lastStatementBalance" : 29.94,
+    "creditLimit" : 28300.0
   }, {
-    "id" : "credit-1775292513128",
-    "name" : "New Account",
-    "availableCredit" : 0.0,
-    "nextPaymentDate" : "2026-04-04",
+    "id" : "credit-1775292898078",
+    "name" : "Chase Amazon Prime (1128)",
+    "availableCredit" : 9228.03,
+    "nextPaymentDate" : "2026-04-10",
     "paidThisMonth" : false,
     "statementCycledAfterPayment" : false,
-    "lastStatementDate" : "2026-04-04",
-    "lastStatementBalance" : 0.0,
-    "creditLimit" : 0.0
+    "lastStatementDate" : "2026-03-13",
+    "lastStatementBalance" : 170.47,
+    "creditLimit" : 9600.0
   }, {
-    "id" : "credit-1775292513264",
-    "name" : "New Account",
-    "availableCredit" : 0.0,
-    "nextPaymentDate" : "2026-04-04",
+    "id" : "credit-1775292900065",
+    "name" : "Chase Marriott (4245)",
+    "availableCredit" : 11700.0,
+    "nextPaymentDate" : "2026-04-10",
     "paidThisMonth" : false,
     "statementCycledAfterPayment" : false,
-    "lastStatementDate" : "2026-04-04",
+    "lastStatementDate" : "2026-03-13",
     "lastStatementBalance" : 0.0,
-    "creditLimit" : 0.0
+    "creditLimit" : 11700.0
+  }, {
+    "id" : "credit-1775292921917",
+    "name" : "Chase Sapphire Reserve (9140)",
+    "availableCredit" : 33967.0,
+    "nextPaymentDate" : "2026-04-10",
+    "paidThisMonth" : false,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-03-13",
+    "lastStatementBalance" : 855.71,
+    "creditLimit" : 35400.0
   } ],
   "incomeItems" : [ {
     "id" : "bi-monthly-salary",
@@ -90,17 +170,17 @@
   "balanceItems" : [ {
     "id" : "checking-balance-chase",
     "label" : "Checking Account Balance",
-    "amount" : 10530.38,
+    "amount" : 10901.29,
     "month" : ""
   }, {
     "id" : "additional-payments-chase",
     "label" : "Additional Payments",
-    "amount" : 0.0,
+    "amount" : 2004.57,
     "month" : ""
   }, {
     "id" : "total-balance-chase",
     "label" : "Total Balance",
-    "amount" : 10530.38,
+    "amount" : 8896.720000000001,
     "month" : ""
   }, {
     "id" : "additional-income-chase",
@@ -110,7 +190,7 @@
   }, {
     "id" : "checking-balance-month-end-chase",
     "label" : "Month End Balance",
-    "amount" : 7641.8099999999995,
+    "amount" : 6417.380000000001,
     "month" : ""
   }, {
     "id" : "chase-cd-balance",
@@ -130,12 +210,12 @@
   }, {
     "id" : "net-balance-month-end",
     "label" : "Net Balance @Month End",
-    "amount" : 7742.379999999999,
+    "amount" : 6517.950000000001,
     "month" : ""
   }, {
     "id" : "net-balance-next-month-end",
     "label" : "Net Balance @Next Month End",
-    "amount" : -5569.590000000002,
+    "amount" : 9316.030000000002,
     "month" : ""
   } ],
   "planoExpenses" : [ {
@@ -192,7 +272,7 @@
     "id" : "other-att-mobile",
     "label" : "Other - ATT - Mobile (Chase)",
     "payDate" : "2026-04-04",
-    "current" : 65.35,
+    "current" : 0.0,
     "next" : 65.35
   }, {
     "id" : "other-529-college-savings",
@@ -206,18 +286,6 @@
     "payDate" : "2026-04-09",
     "current" : 328.58,
     "next" : 328.58
-  }, {
-    "id" : "other-1775292511837",
-    "label" : "New Expense",
-    "payDate" : "2026-04-04",
-    "current" : 0.0,
-    "next" : 0.0
-  }, {
-    "id" : "other-1775292511993",
-    "label" : "New Expense",
-    "payDate" : "2026-04-04",
-    "current" : 0.0,
-    "next" : 0.0
   } ],
   "columnLabels" : {
     "creditAccounts" : [ {
@@ -279,143 +347,41 @@
   },
   "incomeSubsections" : [ {
     "id" : "income-subsection-1775291008588",
-    "title" : "Subsection 1",
+    "title" : "PNC Bank",
     "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
+    "biMonthlySalary" : 2000.0,
     "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
+    "midMonthSalaryArrived" : true,
     "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
+    "monthEndSalaryArrived" : true,
     "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
+    "checkingBalance" : 2158.97,
     "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291009490",
-    "title" : "Subsection 2",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291010249",
-    "title" : "Subsection 3",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291011770",
-    "title" : "Subsection 4",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291012212",
-    "title" : "Subsection 5",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291144681",
-    "title" : "Subsection 6",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
-    "totalBalanceLabel" : "Total Balance",
-    "additionalIncomeLabel" : "Additional Income",
-    "additionalIncome" : 0.0,
-    "monthEndBalanceLabel" : "Month End Balance"
-  }, {
-    "id" : "income-subsection-1775291145256",
-    "title" : "Subsection 7",
-    "biMonthlySalaryLabel" : "Bi-monthly salary",
-    "biMonthlySalary" : 0.0,
-    "midMonthSalaryLabel" : "Mid month salary Arrived",
-    "midMonthSalaryArrived" : false,
-    "monthEndSalaryLabel" : "Month end salary Arrived",
-    "monthEndSalaryArrived" : false,
-    "checkingBalanceLabel" : "Checking Account Balance",
-    "checkingBalance" : 0.0,
-    "additionalPaymentsLabel" : "Additional Payments",
-    "additionalPayments" : 0.0,
+    "additionalPayments" : 1977.07,
     "totalBalanceLabel" : "Total Balance",
     "additionalIncomeLabel" : "Additional Income",
     "additionalIncome" : 0.0,
     "monthEndBalanceLabel" : "Month End Balance"
   } ],
   "summary" : {
-    "totalAvailableCredit" : 1200.0,
-    "totalStatementBalance" : 1900.0,
-    "totalCreditLimit" : 23000.0,
-    "totalDue" : 21800.0,
-    "totalCurrentMonthPayment" : 1400.0,
-    "totalNextMonthBalance" : 20400.0,
-    "totalUtilization" : 94.8,
-    "debitCardExpensesTotalCurrent" : 1488.57,
+    "totalAvailableCredit" : 175795.12,
+    "totalStatementBalance" : 4884.68,
+    "totalCreditLimit" : 181400.0,
+    "totalDue" : 5604.88,
+    "totalCurrentMonthPayment" : 1056.12,
+    "totalNextMonthBalance" : 4289.95,
+    "totalUtilization" : 3.1,
+    "debitCardExpensesTotalCurrent" : 1423.22,
     "debitCardExpensesTotalNext" : 1334.47,
-    "expenseGrandTotal" : 2888.57,
-    "nextMonthExpenseGrandTotal" : 21734.47,
-    "monthAfterNextMonthExpense" : 0.0,
+    "expenseGrandTotal" : 2479.34,
+    "nextMonthExpenseGrandTotal" : 5624.42,
+    "monthAfterNextMonthExpense" : 258.81,
     "salaryTransferToChase" : 8422.5,
     "salaryTransfersToPnc" : 4000.0,
     "totalSalaryPerMonth" : 8422.5,
-    "totalBalanceChase" : 10530.38,
-    "checkingAccountBalanceMonthEndChase" : 7641.81,
-    "netBalanceMonthEnd" : 7742.38,
-    "netBalanceNextMonthEnd" : -5569.59
+    "totalBalanceChase" : 8896.72,
+    "checkingAccountBalanceMonthEndChase" : 6417.38,
+    "netBalanceMonthEnd" : 6517.95,
+    "netBalanceNextMonthEnd" : 9316.03
   }
 }

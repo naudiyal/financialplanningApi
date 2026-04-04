@@ -2,8 +2,8 @@
   "creditAccounts": [
     {
       "name": "Apple Card (2568)",
-      "availableCredit": 3959.43,
-      "nextPaymentDate": "2026-03-31",
+      "availableCredit": 3500.0,
+      "nextPaymentDate": "2026-04-30",
       "paidThisMonth": true,
       "statementCycledAfterPayment": true,
       "lastStatementDate": "2026-03-31",
@@ -13,7 +13,7 @@
     {
       "name": "SamsClub Store Card (5873)",
       "availableCredit": 11297,
-      "nextPaymentDate": "2026-03-23",
+      "nextPaymentDate": "2026-04-23",
       "paidThisMonth": true,
       "statementCycledAfterPayment": true,
       "lastStatementDate": "2026-03-31",
@@ -22,7 +22,7 @@
     },
     {
       "name": "American Express (72022)",
-      "availableCredit": 8221,
+      "availableCredit": 7000.0,
       "nextPaymentDate": "2026-03-28",
       "paidThisMonth": true,
       "statementCycledAfterPayment": false,
@@ -297,7 +297,7 @@
     "creditAccounts": "Credit & Card Accounts",
     "debitExpenses": "Debit Card Expenses",
     "incomeSchedule": "Income Schedule",
-    "incomeScheduleChase": "Chase"
+    "defaultBank": "Chase"
   },
   "incomeSubsections": []
 }
