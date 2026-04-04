@@ -29,6 +29,26 @@
     "lastStatementDate" : "2026-03-10",
     "lastStatementBalance" : 1200.0,
     "creditLimit" : 12000.0
+  }, {
+    "id" : "credit-1775292513128",
+    "name" : "New Account",
+    "availableCredit" : 0.0,
+    "nextPaymentDate" : "2026-04-04",
+    "paidThisMonth" : false,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-04-04",
+    "lastStatementBalance" : 0.0,
+    "creditLimit" : 0.0
+  }, {
+    "id" : "credit-1775292513264",
+    "name" : "New Account",
+    "availableCredit" : 0.0,
+    "nextPaymentDate" : "2026-04-04",
+    "paidThisMonth" : false,
+    "statementCycledAfterPayment" : false,
+    "lastStatementDate" : "2026-04-04",
+    "lastStatementBalance" : 0.0,
+    "creditLimit" : 0.0
   } ],
   "incomeItems" : [ {
     "id" : "bi-monthly-salary",
@@ -186,6 +206,18 @@
     "payDate" : "2026-04-09",
     "current" : 328.58,
     "next" : 328.58
+  }, {
+    "id" : "other-1775292511837",
+    "label" : "New Expense",
+    "payDate" : "2026-04-04",
+    "current" : 0.0,
+    "next" : 0.0
+  }, {
+    "id" : "other-1775292511993",
+    "label" : "New Expense",
+    "payDate" : "2026-04-04",
+    "current" : 0.0,
+    "next" : 0.0
   } ],
   "columnLabels" : {
     "creditAccounts" : [ {
