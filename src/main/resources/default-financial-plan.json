@@ -1,0 +1,303 @@
+{
+  "creditAccounts": [
+    {
+      "name": "Apple Card (2568)",
+      "availableCredit": 3959.43,
+      "nextPaymentDate": "2026-03-31",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": true,
+      "lastStatementDate": "2026-03-31",
+      "lastStatementBalance": 30.58,
+      "creditLimit": 4000
+    },
+    {
+      "name": "SamsClub Store Card (5873)",
+      "availableCredit": 11297,
+      "nextPaymentDate": "2026-03-23",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": true,
+      "lastStatementDate": "2026-03-31",
+      "lastStatementBalance": 444.19,
+      "creditLimit": 12000
+    },
+    {
+      "name": "American Express (72022)",
+      "availableCredit": 8221,
+      "nextPaymentDate": "2026-03-28",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-08",
+      "lastStatementBalance": 115.66,
+      "creditLimit": 8300
+    },
+    {
+      "name": "Amazon Store Card (5108) - amazon.syf.com",
+      "availableCredit": 2700,
+      "nextPaymentDate": "2026-04-01",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-06",
+      "lastStatementBalance": 0,
+      "creditLimit": 2700
+    },
+    {
+      "name": "Wellsfargo (4256)",
+      "availableCredit": 16652,
+      "nextPaymentDate": "2026-04-02",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-08",
+      "lastStatementBalance": 1728.18,
+      "creditLimit": 18000
+    },
+    {
+      "name": "Target (0969)",
+      "availableCredit": 7218,
+      "nextPaymentDate": "2026-04-03",
+      "paidThisMonth": true,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-04-03",
+      "lastStatementBalance": 709.96,
+      "creditLimit": 7400
+    },
+    {
+      "name": "Barclays Frontier (5640)",
+      "availableCredit": 8269.86,
+      "nextPaymentDate": "2026-04-03",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-06",
+      "lastStatementBalance": 670.23,
+      "creditLimit": 10000
+    },
+    {
+      "name": "Fidelity (9857)",
+      "availableCredit": 29723.52,
+      "nextPaymentDate": "2026-04-06",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-09",
+      "lastStatementBalance": 118.49,
+      "creditLimit": 30000
+    },
+    {
+      "name": "Citi Bestbuy (5026)",
+      "availableCredit": 4000,
+      "nextPaymentDate": "2026-04-05",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-11",
+      "lastStatementBalance": 0,
+      "creditLimit": 4000
+    },
+    {
+      "name": "BOA Spirit (2795)",
+      "availableCredit": 28270.06,
+      "nextPaymentDate": "2026-04-08",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-11",
+      "lastStatementBalance": 29.94,
+      "creditLimit": 28300
+    },
+    {
+      "name": "Chase Amazon Prime (1128)",
+      "availableCredit": 9228.03,
+      "nextPaymentDate": "2026-04-10",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-13",
+      "lastStatementBalance": 170.47,
+      "creditLimit": 9600
+    },
+    {
+      "name": "Chase Marriott (4245)",
+      "availableCredit": 11700,
+      "nextPaymentDate": "2026-04-10",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-13",
+      "lastStatementBalance": 0,
+      "creditLimit": 11700
+    },
+    {
+      "name": "Chase Sapphire Reserve (9140)",
+      "availableCredit": 33973.46,
+      "nextPaymentDate": "2026-04-10",
+      "paidThisMonth": false,
+      "statementCycledAfterPayment": false,
+      "lastStatementDate": "2026-03-13",
+      "lastStatementBalance": 855.71,
+      "creditLimit": 35400
+    }
+  ],
+  "incomeItems": [
+    {
+      "label": "Bi-mon Sal minus(ESPP + 2 Mortgage Payments)",
+      "amount": 4211.25,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Sal 15th",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Sal 1st",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary Transfer To Chase/Month",
+      "amount": 8422.5,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary Transfers to PNC for Home Loans",
+      "amount": 4000,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Total Salary Per Month",
+      "amount": 8422.5,
+      "month": "",
+      "note": null
+    }
+  ],
+  "balanceItems": [
+    {
+      "label": "Checking Account Balance - Chase",
+      "amount": 10530.38,
+      "month": ""
+    },
+    {
+      "label": "Additional Payments - Chase",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Total Balance - Chase",
+      "amount": 10530.38,
+      "month": ""
+    },
+    {
+      "label": "Additional Income - Chase",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Checking Account Balance @Month End - Chase",
+      "amount": 7196.97,
+      "month": ""
+    },
+    {
+      "label": "Chase CD Balance",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Checking Account Balance - PNC",
+      "amount": 100.57,
+      "month": ""
+    },
+    {
+      "label": "Additional Other Income",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Net Balance @Month End",
+      "amount": 7297.54,
+      "month": ""
+    },
+    {
+      "label": "Net Balance @Next Month End",
+      "amount": 10311.57,
+      "month": ""
+    }
+  ],
+  "planoExpenses": [
+    {
+      "label": "Water (Chase)",
+      "payDate": "2026-03-24",
+      "current": 0,
+      "next": 87.94
+    },
+    {
+      "label": "Internet ATT(Chase)",
+      "payDate": "2026-03-19",
+      "current": 0,
+      "next": 42.43
+    },
+    {
+      "label": "HOA (Chase)",
+      "payDate": "2026-04-11",
+      "current": 355,
+      "next": 355
+    },
+    {
+      "label": "Electricity (WellsFargo CC Tran)",
+      "payDate": "2026-04-14",
+      "current": 111,
+      "next": 111
+    }
+  ],
+  "sanfordExpenses": [
+    {
+      "label": "Water (Chase)",
+      "payDate": "2026-03-19",
+      "current": 0,
+      "next": 90.48
+    },
+    {
+      "label": "Electricity (Chase)",
+      "payDate": "2026-03-19",
+      "current": 0,
+      "next": 188.82
+    },
+    {
+      "label": "Internet ATT (Chase)",
+      "payDate": "2026-03-24",
+      "current": 0,
+      "next": 64.87
+    },
+    {
+      "label": "HOA -($628.64/Qtr) (Chase)",
+      "payDate": "2026-04-07",
+      "current": 628.64,
+      "next": 0
+    }
+  ],
+  "otherExpenses": [
+    {
+      "label": "ATT - Mobile (Chase)",
+      "payDate": "2026-04-04",
+      "current": 65.35,
+      "next": 65.35
+    },
+    {
+      "label": "529 College Savings",
+      "payDate": "2026-04-05",
+      "current": 0,
+      "next": 0
+    },
+    {
+      "label": "Geico Car Insurance (WellsFargo CC Tran)",
+      "payDate": "2026-04-09",
+      "current": 328.58,
+      "next": 328.58
+    }
+  ],
+  "sectionTitles": {
+    "creditAccounts": "Credit & Card Accounts",
+    "debitExpenses": "Debit Card Expenses",
+    "incomeSchedule": "Income Schedule",
+    "incomeScheduleChase": "Chase"
+  },
+  "incomeSubsections": []
+}
