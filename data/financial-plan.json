@@ -343,7 +343,7 @@
     "creditAccounts" : "Credit Card Accounts",
     "debitExpenses" : "Debit Card Expenses",
     "incomeSchedule" : "Bank Accounts",
-    "incomeScheduleChase" : "Chase Bank"
+    "defaultBank" : "Chase"
   },
   "incomeSubsections" : [ {
     "id" : "income-subsection-1775291008588",
