@@ -31,7 +31,7 @@
     "creditLimit" : 8300.0
   }, {
     "id" : "credit-1775292780485",
-    "name" : "Amazon Store Card (5108) - amazon.syf.com",
+    "name" : "Amazon Store Card (5108)",
     "availableCredit" : 2700.0,
     "nextPaymentDate" : "2026-04-01",
     "paidThisMonth" : true,
@@ -282,7 +282,7 @@
     "next" : 0.0
   }, {
     "id" : "other-geico-car-insurance",
-    "label" : "Geico Car Insurance (WF CC Tran)",
+    "label" : "Other - Geico Car Insurance (WF CC Tran)",
     "payDate" : "2026-04-09",
     "current" : 328.58,
     "next" : 328.58
