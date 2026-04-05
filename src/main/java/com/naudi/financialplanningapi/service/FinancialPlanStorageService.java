@@ -97,7 +97,7 @@ public class FinancialPlanStorageService {
         new ColumnLabel("statement-date", "Stmt Date"),
         new ColumnLabel("statement-balance", "Stmt Balance"),
         new ColumnLabel("credit-limit", "Limit"),
-        new ColumnLabel("due", "Due"),
+        new ColumnLabel("due", "Total Due"),
         new ColumnLabel("current-payment", "Curr Payment"),
         new ColumnLabel("next-balance", "Next Balance"),
         new ColumnLabel("utilization", "Util %")
