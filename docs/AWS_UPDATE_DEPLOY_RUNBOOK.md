@@ -125,11 +125,14 @@ sudo systemctl reload nginx
 
 ## 6. Quick verification on EC2
 
-Check that the site is responding locally on the server:
+Check that the site is responding through the configured Nginx host routing on the server:
 
 ```bash
-curl -I http://localhost
+curl -I -H 'Host: mybetterbudget.com' http://127.0.0.1
+curl -I https://mybetterbudget.com
 ```
+
+`curl -I http://localhost` returns `404` on this server because the active Nginx site is bound to `mybetterbudget.com` and `www.mybetterbudget.com`, not `localhost`.
 
 If you have an API endpoint you want to verify through Nginx, test that as well. If not, rely on `systemctl status` and `journalctl` for backend verification.
 
