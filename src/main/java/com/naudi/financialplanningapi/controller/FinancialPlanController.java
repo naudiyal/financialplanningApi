@@ -2,6 +2,7 @@ package com.naudi.financialplanningapi.controller;
 
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,8 +22,18 @@ public class FinancialPlanController {
     }
 
     @GetMapping
-    public FinancialPlanData getFinancialPlan(Authentication authentication) {
-        return financialPlanStorageService.load(authentication);
+    public ResponseEntity<FinancialPlanData> getFinancialPlan(Authentication authentication) {
+        FinancialPlanData financialPlanData = financialPlanStorageService.load(authentication);
+        boolean hasSavedPlan = financialPlanStorageService.hasSavedPlan(authentication);
+
+        return ResponseEntity.ok()
+            .header("X-Has-Saved-Plan", Boolean.toString(hasSavedPlan))
+            .body(financialPlanData);
+    }
+
+    @GetMapping("/sample")
+    public FinancialPlanData getSampleFinancialPlan(Authentication authentication) {
+        return financialPlanStorageService.loadSample(authentication);
     }
 
     @PutMapping

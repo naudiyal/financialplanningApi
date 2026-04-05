@@ -16,15 +16,21 @@ import java.util.ArrayList;
 import java.util.List;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class FinancialPlanStorageService {
 
     private static final String NEW_USER_TEMPLATE_RESOURCE = "new-user-financial-plan.json";
+    private static final String SAMPLE_PLAN_USER_SUB = "sample-mybetterbudget-com";
+    private static final String SAMPLE_PLAN_EMAIL = "sample@mybetterbudget.com";
+    private static final String SAMPLE_PLAN_DISPLAY_NAME = "Sample Plan";
+    private static final String SAMPLE_SOURCE_EMAIL = "innaudiyal@gmail.com";
     private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
@@ -149,6 +155,20 @@ public class FinancialPlanStorageService {
         }
     }
 
+    public boolean hasSavedPlan(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+
+        return jdbcClient.sql("""
+                SELECT COALESCE(updated_at > created_at, false)
+                FROM app_user_financial_plan
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .query(Boolean.class)
+            .optional()
+            .orElse(false);
+    }
+
     public FinancialPlanData save(Authentication authentication, FinancialPlanData financialPlanData) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
         try {
@@ -161,8 +181,37 @@ public class FinancialPlanStorageService {
         }
     }
 
+    public FinancialPlanData loadSample(Authentication authentication) {
+        authenticatedUser(authentication);
+        try {
+            String planJson = jdbcClient.sql("""
+                    SELECT plan_data::text
+                    FROM app_user_financial_plan
+                    WHERE user_sub = :userSub
+                    """)
+                .param("userSub", SAMPLE_PLAN_USER_SUB)
+                .query(String.class)
+                .optional()
+                .orElse(null);
+
+            if (planJson == null) {
+                FinancialPlanData samplePlan = createSamplePlanFromSource();
+                return financialPlanCalculationService.withCalculatedSummary(normalizeIds(samplePlan));
+            }
+
+            FinancialPlanData storedData = objectMapper.readValue(planJson, FinancialPlanData.class);
+            return financialPlanCalculationService.withCalculatedSummary(normalizeIds(storedData));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to read sample financial plan data", exception);
+        }
+    }
+
     public void delete(Authentication authentication) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+
+        if (SAMPLE_PLAN_USER_SUB.equals(authenticatedUser.userSub()) || SAMPLE_PLAN_EMAIL.equalsIgnoreCase(authenticatedUser.email())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Sample plan cannot be deleted");
+        }
 
         jdbcClient.sql("""
                 DELETE FROM app_user_financial_plan
@@ -210,6 +259,29 @@ public class FinancialPlanStorageService {
             .param("displayName", authenticatedUser.displayName())
             .param("planData", planJson)
             .update();
+    }
+
+    private FinancialPlanData createSamplePlanFromSource() throws IOException {
+        String sourcePlanJson = jdbcClient.sql("""
+                SELECT plan_data::text
+                FROM app_user_financial_plan
+                WHERE email = :email
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """)
+            .param("email", SAMPLE_SOURCE_EMAIL)
+            .query(String.class)
+            .optional()
+            .orElse(null);
+
+        FinancialPlanData sourcePlan = sourcePlanJson == null
+            ? buildSeededPlan()
+            : objectMapper.readValue(sourcePlanJson, FinancialPlanData.class);
+
+        FinancialPlanData normalizedData = normalizeIds(sourcePlan);
+        FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+        upsertPlan(new AuthenticatedUser(SAMPLE_PLAN_USER_SUB, SAMPLE_PLAN_EMAIL, SAMPLE_PLAN_DISPLAY_NAME), enrichedData);
+        return enrichedData;
     }
 
     private AuthenticatedUser authenticatedUser(Authentication authentication) {
