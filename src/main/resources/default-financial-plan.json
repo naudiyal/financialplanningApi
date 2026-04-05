@@ -216,8 +216,8 @@
       "month": ""
     },
     {
-      "label": "Net Balance @Next Month End",
-      "amount": 10311.57,
+      "label": "Savings Next Month",
+      "amount": 3014.03,
       "month": ""
     }
   ],
@@ -294,9 +294,9 @@
     }
   ],
   "sectionTitles": {
-    "creditAccounts": "Credit & Card Accounts",
+    "creditAccounts": "Credit Card Accounts",
     "debitExpenses": "Debit Card Expenses",
-    "incomeSchedule": "Income Schedule",
+    "incomeSchedule": "Bank Accounts",
     "defaultBank": "Chase"
   },
   "incomeSubsections": []

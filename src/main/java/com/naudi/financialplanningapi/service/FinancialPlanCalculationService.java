@@ -78,7 +78,7 @@ public class FinancialPlanCalculationService {
         double totalBalanceChase = salary15th + salary1st + checkingAccountBalanceChase - additionalPaymentsChase;
         double checkingAccountBalanceMonthEndChase = totalBalanceChase + additionalIncomeChase - expenseGrandTotal;
         double netBalanceMonthEnd = checkingAccountBalanceMonthEndChase + chaseCdBalance + checkingAccountBalancePnc + additionalOtherIncome;
-        double netBalanceNextMonthEnd = netBalanceMonthEnd + salaryTransferToChase - nextMonthExpenseGrandTotal;
+        double savingsNextMonth = salaryTransferToChase - nextMonthExpenseGrandTotal;
 
         return new FinancialPlanSummary(
             roundCurrency(totalAvailableCredit),
@@ -99,7 +99,7 @@ public class FinancialPlanCalculationService {
             roundCurrency(totalBalanceChase),
             roundCurrency(checkingAccountBalanceMonthEndChase),
             roundCurrency(netBalanceMonthEnd),
-            roundCurrency(netBalanceNextMonthEnd)
+            roundCurrency(savingsNextMonth)
         );
     }
 

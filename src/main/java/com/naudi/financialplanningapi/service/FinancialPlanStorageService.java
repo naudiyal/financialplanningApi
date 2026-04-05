@@ -12,16 +12,23 @@ import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
 @Service
 public class FinancialPlanStorageService {
+
+    private static final String NEW_USER_TEMPLATE_RESOURCE = "new-user-financial-plan.json";
+    private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
+    private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
+    private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
+    private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
 
     private static final List<String> CREDIT_ACCOUNT_IDS = List.of(
         "apple-card",
@@ -56,7 +63,7 @@ public class FinancialPlanStorageService {
         "checking-balance-pnc",
         "additional-other-income",
         "net-balance-month-end",
-        "net-balance-next-month-end"
+        SAVINGS_NEXT_MONTH_ID
     );
     private static final List<String> PLANO_EXPENSE_IDS = List.of(
         "plano-water",
@@ -96,60 +103,143 @@ public class FinancialPlanStorageService {
         new ColumnLabel("next-month", "Next Month")
     );
     private static final FinancialPlanSectionTitles DEFAULT_SECTION_TITLES = new FinancialPlanSectionTitles(
-        "Credit & Card Accounts",
+        "Credit Card Accounts",
         "Debit Card Expenses",
-        "Income Schedule",
+        "Bank Accounts",
         "Chase"
     );
 
     private final ObjectMapper objectMapper;
-    private final Path storagePath;
+    private final JdbcClient jdbcClient;
     private final FinancialPlanCalculationService financialPlanCalculationService;
 
     public FinancialPlanStorageService(
         ObjectMapper objectMapper,
-        FinancialPlanCalculationService financialPlanCalculationService,
-        @Value("${app.storage.path:./data/financial-plan.json}") String storagePath
+        JdbcClient jdbcClient,
+        FinancialPlanCalculationService financialPlanCalculationService
     ) {
         this.objectMapper = objectMapper;
+        this.jdbcClient = jdbcClient;
         this.financialPlanCalculationService = financialPlanCalculationService;
-        this.storagePath = Path.of(storagePath).toAbsolutePath().normalize();
-        initializeStorage();
     }
 
-    public synchronized FinancialPlanData load() {
+    public FinancialPlanData load(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
         try {
-            FinancialPlanData storedData = normalizeIds(objectMapper.readValue(storagePath.toFile(), FinancialPlanData.class));
-            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(storedData);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(storagePath.toFile(), enrichedData);
-            return enrichedData;
+            String planJson = jdbcClient.sql("""
+                    SELECT plan_data::text
+                    FROM app_user_financial_plan
+                    WHERE user_sub = :userSub
+                    """)
+                .param("userSub", authenticatedUser.userSub())
+                .query(String.class)
+                .optional()
+                .orElse(null);
+
+            if (planJson == null) {
+                FinancialPlanData seededPlan = buildSeededPlan();
+                upsertPlan(authenticatedUser, seededPlan);
+                return seededPlan;
+            }
+
+            FinancialPlanData storedData = objectMapper.readValue(planJson, FinancialPlanData.class);
+            return financialPlanCalculationService.withCalculatedSummary(normalizeIds(storedData));
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to read financial plan data", exception);
         }
     }
 
-    public synchronized FinancialPlanData save(FinancialPlanData financialPlanData) {
+    public FinancialPlanData save(Authentication authentication, FinancialPlanData financialPlanData) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
         try {
             FinancialPlanData normalizedData = normalizeIds(financialPlanData);
             FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(storagePath.toFile(), enrichedData);
+            upsertPlan(authenticatedUser, enrichedData);
             return enrichedData;
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to save financial plan data", exception);
         }
     }
 
+    public void delete(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+
+        jdbcClient.sql("""
+                DELETE FROM app_user_financial_plan
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .update();
+    }
+
+    private FinancialPlanData buildSeededPlan() throws IOException {
+        FinancialPlanData defaultData = readNewUserTemplate();
+        FinancialPlanData normalizedData = normalizeIds(defaultData);
+        return financialPlanCalculationService.withCalculatedSummary(normalizedData);
+    }
+
+    private FinancialPlanData readNewUserTemplate() throws IOException {
+        ClassPathResource defaultData = new ClassPathResource(NEW_USER_TEMPLATE_RESOURCE);
+        try (InputStream inputStream = defaultData.getInputStream()) {
+            return objectMapper.readValue(inputStream, FinancialPlanData.class);
+        }
+    }
+
+    private FinancialPlanData readDefaultPlan() throws IOException {
+        ClassPathResource defaultData = new ClassPathResource("default-financial-plan.json");
+        try (InputStream inputStream = defaultData.getInputStream()) {
+            return objectMapper.readValue(inputStream, FinancialPlanData.class);
+        }
+    }
+
+    private void upsertPlan(AuthenticatedUser authenticatedUser, FinancialPlanData financialPlanData) throws IOException {
+        String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(financialPlanData);
+
+        jdbcClient.sql("""
+                INSERT INTO app_user_financial_plan (user_sub, email, display_name, plan_data)
+                VALUES (:userSub, :email, :displayName, CAST(:planData AS jsonb))
+                ON CONFLICT (user_sub)
+                DO UPDATE SET
+                    email = EXCLUDED.email,
+                    display_name = EXCLUDED.display_name,
+                    plan_data = EXCLUDED.plan_data,
+                    updated_at = NOW()
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .param("email", authenticatedUser.email())
+            .param("displayName", authenticatedUser.displayName())
+            .param("planData", planJson)
+            .update();
+    }
+
+    private AuthenticatedUser authenticatedUser(Authentication authentication) {
+        if (authentication == null
+            || !authentication.isAuthenticated()
+            || authentication instanceof AnonymousAuthenticationToken
+            || !(authentication.getPrincipal() instanceof OAuth2User oauth2User)) {
+            throw new IllegalStateException("Authenticated Google user is required");
+        }
+
+        String userSub = stringValue(oauth2User.getAttribute("sub"));
+        if (userSub == null || userSub.isBlank()) {
+            throw new IllegalStateException("Authenticated Google user is missing sub claim");
+        }
+
+        String email = stringValue(oauth2User.getAttribute("email"));
+        String displayName = stringValue(oauth2User.getAttribute("name"));
+        return new AuthenticatedUser(userSub, email, displayName);
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private record AuthenticatedUser(String userSub, String email, String displayName) {
+    }
+
     private void initializeStorage() {
         try {
-            Files.createDirectories(storagePath.getParent());
-            if (Files.exists(storagePath)) {
-                return;
-            }
-
-            ClassPathResource defaultData = new ClassPathResource("default-financial-plan.json");
-            try (InputStream inputStream = defaultData.getInputStream()) {
-                Files.copy(inputStream, storagePath);
-            }
+            readDefaultPlan();
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to initialize financial plan storage", exception);
         }
@@ -188,7 +278,7 @@ public class FinancialPlanStorageService {
                 subsection.midMonthSalaryArrived(),
                 normalizeText(subsection.monthEndSalaryLabel(), "Month end salary Arrived"),
                 subsection.monthEndSalaryArrived(),
-                normalizeText(subsection.checkingBalanceLabel(), "Checking Account Balance"),
+                normalizeText(subsection.checkingBalanceLabel(), "Account Balance"),
                 subsection.checkingBalance(),
                 normalizeText(subsection.additionalPaymentsLabel(), "Additional Payments"),
                 subsection.additionalPayments(),
@@ -276,14 +366,27 @@ public class FinancialPlanStorageService {
         List<BalanceItem> normalized = new ArrayList<>();
         for (int index = 0; index < balanceItems.size(); index++) {
             BalanceItem item = balanceItems.get(index);
+            String normalizedId = normalizeId(item.id(), BALANCE_ITEM_IDS, index, item.label());
             normalized.add(new BalanceItem(
-                normalizeId(item.id(), BALANCE_ITEM_IDS, index, item.label()),
-                item.label(),
+                normalizedId,
+                normalizeBalanceLabel(normalizedId, item.label()),
                 item.amount(),
                 item.month()
             ));
         }
         return normalized;
+    }
+
+    private String normalizeBalanceLabel(String id, String label) {
+        if (!SAVINGS_NEXT_MONTH_ID.equals(id)) {
+            return label;
+        }
+
+        if (label == null || label.isBlank() || LEGACY_NEXT_MONTH_LABEL.equals(label) || "Net balance next month end".equals(label)) {
+            return SAVINGS_NEXT_MONTH_LABEL;
+        }
+
+        return label;
     }
 
     private List<ExpenseItem> normalizeExpenseItems(List<ExpenseItem> expenseItems, List<String> defaults) {
@@ -302,6 +405,9 @@ public class FinancialPlanStorageService {
     }
 
     private String normalizeId(String currentId, List<String> defaults, int index, String fallbackText) {
+        if (LEGACY_NEXT_MONTH_ID.equals(currentId)) {
+            return SAVINGS_NEXT_MONTH_ID;
+        }
         if (currentId != null && !currentId.isBlank()) {
             return currentId;
         }

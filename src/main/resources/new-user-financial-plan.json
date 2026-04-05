@@ -1,0 +1,103 @@
+{
+  "creditAccounts": [],
+  "incomeItems": [
+    {
+      "label": "Bi-monthly salary",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary received on 15th",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary received on 1st",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary transfer to primary bank",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Salary transfer for home loans",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Total salary per month",
+      "amount": 0,
+      "month": "",
+      "note": null
+    }
+  ],
+  "balanceItems": [
+    {
+      "label": "Checking account balance - primary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Additional payments - primary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Total balance - primary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Additional income - primary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Checking account balance month end - primary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Savings or CD balance",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Checking account balance - secondary bank",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Additional other income",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Net balance month end",
+      "amount": 0,
+      "month": ""
+    },
+    {
+      "label": "Savings Next Month",
+      "amount": 0,
+      "month": ""
+    }
+  ],
+  "planoExpenses": [],
+  "sanfordExpenses": [],
+  "otherExpenses": [],
+  "sectionTitles": {
+    "creditAccounts": "Credit Card Accounts",
+    "debitExpenses": "Debit Card Expenses",
+    "incomeSchedule": "Bank Accounts",
+    "defaultBank": "Primary Bank"
+  },
+  "incomeSubsections": []
+}

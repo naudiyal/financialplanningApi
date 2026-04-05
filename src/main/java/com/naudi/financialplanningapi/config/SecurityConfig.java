@@ -1,5 +1,6 @@
 package com.naudi.financialplanningapi.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -45,8 +46,12 @@ public class SecurityConfig {
             )
             .logout(logout -> logout
                 .logoutUrl("/api/auth/logout")
+                .invalidateHttpSession(true)
+                .clearAuthentication(true)
+                .deleteCookies("JSESSIONID")
                 .logoutSuccessHandler((request, response, authentication) -> {
-                    clearSessionCookie(response, authentication);
+                    invalidateSession(request);
+                    clearSessionCookie(response);
                     response.setStatus(HttpServletResponse.SC_NO_CONTENT);
                 })
             );
@@ -54,7 +59,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    private void clearSessionCookie(HttpServletResponse response, Authentication authentication) {
+    private void invalidateSession(HttpServletRequest request) {
+        if (request.getSession(false) != null) {
+            request.getSession(false).invalidate();
+        }
+    }
+
+    private void clearSessionCookie(HttpServletResponse response) {
         response.addHeader("Set-Cookie", "JSESSIONID=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
     }
 }
