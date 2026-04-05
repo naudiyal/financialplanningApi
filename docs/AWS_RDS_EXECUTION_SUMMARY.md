@@ -4,6 +4,8 @@ This document records the detailed sequence of work completed after the AWS Post
 
 Secrets are intentionally redacted in this log. Hostnames, security group IDs, commands, file paths, and operational issues are included because they were necessary to complete the cutover.
 
+Historical note: references here to `APP_STORAGE_PATH` or `financial-plan.json` reflect the older file-based deployment state during cutover. The current application stores plan data in PostgreSQL for normal runtime.
+
 ## 1. RDS Creation Details
 
 The production database was created in AWS RDS with the following configuration decisions.

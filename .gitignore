@@ -4,3 +4,5 @@ target/
 *.class
 *.log
 artifacts/
+node_modules/
+

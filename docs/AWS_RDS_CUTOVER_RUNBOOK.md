@@ -8,6 +8,8 @@ This runbook is for the current production strategy:
 4. local development PostgreSQL is the source of truth
 5. existing production JSON is backed up and then ignored
 
+Historical note: this runbook preserves the original cutover steps, including the backup of the old JSON file. The current application runtime uses PostgreSQL rather than `financial-plan.json`.
+
 ## 1. Export Local Development Data
 
 From the API repo on the Windows development machine:

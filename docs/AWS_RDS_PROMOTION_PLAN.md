@@ -7,6 +7,8 @@ This plan assumes:
 3. the local development PostgreSQL database is the source of truth for production data
 4. downtime during cutover is acceptable
 
+Historical note: this promotion plan documents the move away from the old JSON file. The current application runtime uses PostgreSQL rather than `financial-plan.json`.
+
 ## Target Production Shape
 
 1. frontend: Vite build served by Nginx on EC2

@@ -10,6 +10,8 @@ This document captures the production deployment work for the Financial Planning
 6. how each issue was resolved
 7. the final production outcome
 
+Historical note: this log includes earlier file-based storage steps and references to `financial-plan.json`. The current application stores plan data in PostgreSQL and does not depend on `APP_STORAGE_PATH` for normal runtime.
+
 ## 1. Initial Production Hosting Question
 
 ### Your question
