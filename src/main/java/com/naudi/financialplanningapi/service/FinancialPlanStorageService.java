@@ -143,9 +143,7 @@ public class FinancialPlanStorageService {
                 .orElse(null);
 
             if (planJson == null) {
-                FinancialPlanData seededPlan = buildSeededPlan();
-                upsertPlan(authenticatedUser, seededPlan);
-                return seededPlan;
+                return buildSeededPlan();
             }
 
             FinancialPlanData storedData = objectMapper.readValue(planJson, FinancialPlanData.class);
