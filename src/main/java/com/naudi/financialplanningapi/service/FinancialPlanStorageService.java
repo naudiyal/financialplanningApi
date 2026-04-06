@@ -2,16 +2,23 @@ package com.naudi.financialplanningapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.naudi.financialplanningapi.model.BalanceItem;
+import com.naudi.financialplanningapi.model.CloseCycleRequest;
 import com.naudi.financialplanningapi.model.ColumnLabel;
 import com.naudi.financialplanningapi.model.CreditAccount;
+import com.naudi.financialplanningapi.model.CyclePeriod;
+import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.ExpenseItem;
 import com.naudi.financialplanningapi.model.FinancialPlanColumnLabels;
+import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.FinancialPlanSectionTitles;
 import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
+import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.core.io.ClassPathResource;
@@ -26,6 +33,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class FinancialPlanStorageService {
 
+    private static final String PLAN_TABLE = "app_user_financial_plan_cycle";
+
     private static final String NEW_USER_TEMPLATE_RESOURCE = "new-user-financial-plan.json";
     private static final String SAMPLE_PLAN_USER_SUB = "sample-mybetterbudget-com";
     private static final String SAMPLE_PLAN_EMAIL = "sample@mybetterbudget.com";
@@ -35,6 +44,7 @@ public class FinancialPlanStorageService {
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
     private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
+    private static final double CLOSE_CYCLE_CURRENT_EXPENSE_TOLERANCE = 0.004d;
 
     private static final List<String> CREDIT_ACCOUNT_IDS = List.of(
         "apple-card",
@@ -129,53 +139,147 @@ public class FinancialPlanStorageService {
         this.financialPlanCalculationService = financialPlanCalculationService;
     }
 
-    public FinancialPlanData load(Authentication authentication) {
+    public FinancialPlanCycleResponse load(Authentication authentication, CycleSlot cycleSlot) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        try {
-            String planJson = jdbcClient.sql("""
-                    SELECT plan_data::text
-                    FROM app_user_financial_plan
-                    WHERE user_sub = :userSub
-                    """)
-                .param("userSub", authenticatedUser.userSub())
-                .query(String.class)
-                .optional()
-                .orElse(null);
+        StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+        StoredCycle previousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
 
-            if (planJson == null) {
-                return buildSeededPlan();
+        CyclePeriod resolvedCurrentCycle = cyclePeriodFor(currentCycle, CycleSlot.CURRENT);
+        CyclePeriod resolvedPreviousCycle = previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS) : null;
+        FinancialPlanData currentData = currentCycle != null ? currentCycle.financialPlanData() : buildSeededPlanSafely();
+
+        if (cycleSlot == CycleSlot.PREVIOUS) {
+            if (previousCycle == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Previous cycle not found");
             }
 
-            FinancialPlanData storedData = objectMapper.readValue(planJson, FinancialPlanData.class);
-            return financialPlanCalculationService.withCalculatedSummary(normalizeIds(storedData));
+            return buildResponse(
+                financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData()),
+                cycleSlot,
+                resolvedCurrentCycle,
+                resolvedPreviousCycle,
+                hasSavedPlan(currentCycle),
+                canCloseCycle(currentData)
+            );
+        }
+
+        return buildResponse(
+            currentData,
+            cycleSlot,
+            resolvedCurrentCycle,
+            resolvedPreviousCycle,
+            hasSavedPlan(currentCycle),
+            canCloseCycle(currentData)
+        );
+    }
+
+    public FinancialPlanCycleResponse save(Authentication authentication, CycleSlot cycleSlot, FinancialPlanData financialPlanData) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (cycleSlot == CycleSlot.PREVIOUS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Previous cycle is read only");
+        }
+
+        try {
+            StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT);
+            FinancialPlanData normalizedData = normalizeIds(financialPlanData);
+            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+            upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, enrichedData);
+            return buildResponse(
+                enrichedData,
+                CycleSlot.CURRENT,
+                currentPeriod,
+                previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS) : null,
+                true,
+                canCloseCycle(enrichedData)
+            );
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to read financial plan data", exception);
+            throw new IllegalStateException("Failed to save financial plan data", exception);
         }
     }
 
-    public boolean hasSavedPlan(Authentication authentication) {
+    public FinancialPlanCycleResponse closeCycle(Authentication authentication, CloseCycleRequest closeCycleRequest) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
 
-        return jdbcClient.sql("""
-                SELECT COALESCE(updated_at > created_at, false)
-                FROM app_user_financial_plan
-                WHERE user_sub = :userSub
-                """)
-            .param("userSub", authenticatedUser.userSub())
-            .query(Boolean.class)
-            .optional()
-            .orElse(false);
+        if (closeCycleRequest == null || closeCycleRequest.financialPlanData() == null || closeCycleRequest.expectedCurrentCycle() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current cycle payload is required");
+        }
+
+        try {
+            StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT);
+
+            if (!currentPeriod.equals(closeCycleRequest.expectedCurrentCycle())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle changed. Reload before closing the cycle.");
+            }
+
+            FinancialPlanData archivedCurrentData = financialPlanCalculationService.withCalculatedSummary(
+                normalizeIds(closeCycleRequest.financialPlanData())
+            );
+
+            if (!canCloseCycle(archivedCurrentData)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle is not ready to close");
+            }
+
+            upsertPlan(authenticatedUser, CycleSlot.PREVIOUS, currentPeriod, archivedCurrentData);
+
+            CyclePeriod nextCurrentPeriod = nextCyclePeriod(currentPeriod);
+            FinancialPlanData nextCurrentData = financialPlanCalculationService.startNewCycle(archivedCurrentData);
+            upsertPlan(authenticatedUser, CycleSlot.CURRENT, nextCurrentPeriod, nextCurrentData);
+
+            return buildResponse(
+                nextCurrentData,
+                CycleSlot.CURRENT,
+                nextCurrentPeriod,
+                currentPeriod,
+                true,
+                canCloseCycle(nextCurrentData)
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to close financial cycle", exception);
+        }
     }
 
-    public FinancialPlanData save(Authentication authentication, FinancialPlanData financialPlanData) {
+    public FinancialPlanCycleResponse revertCloseCycle(Authentication authentication, RevertCloseCycleRequest revertCloseCycleRequest) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+
+        if (revertCloseCycleRequest == null
+            || revertCloseCycleRequest.expectedCurrentCycle() == null
+            || revertCloseCycleRequest.expectedPreviousCycle() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current and previous cycle metadata are required");
+        }
+
         try {
-            FinancialPlanData normalizedData = normalizeIds(financialPlanData);
-            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
-            upsertPlan(authenticatedUser, enrichedData);
-            return enrichedData;
+            StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+
+            if (currentCycle == null || previousCycle == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "No recently closed cycle is available to reset");
+            }
+
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT);
+            CyclePeriod previousPeriod = cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS);
+
+            if (!currentPeriod.equals(revertCloseCycleRequest.expectedCurrentCycle())
+                || !previousPeriod.equals(revertCloseCycleRequest.expectedPreviousCycle())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Cycle state changed. Reload before resetting.");
+            }
+
+            FinancialPlanData restoredCurrentData = financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData());
+            upsertPlan(authenticatedUser, CycleSlot.CURRENT, previousPeriod, restoredCurrentData);
+            deletePlan(authenticatedUser, CycleSlot.PREVIOUS);
+
+            return buildResponse(
+                restoredCurrentData,
+                CycleSlot.CURRENT,
+                previousPeriod,
+                null,
+                true,
+                canCloseCycle(restoredCurrentData)
+            );
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to save financial plan data", exception);
+            throw new IllegalStateException("Failed to revert closed financial cycle", exception);
         }
     }
 
@@ -184,8 +288,9 @@ public class FinancialPlanStorageService {
         try {
             String planJson = jdbcClient.sql("""
                     SELECT plan_data::text
-                    FROM app_user_financial_plan
+                                        FROM app_user_financial_plan_cycle
                     WHERE user_sub = :userSub
+                      AND cycle_slot = 'CURRENT'
                     """)
                 .param("userSub", SAMPLE_PLAN_USER_SUB)
                 .query(String.class)
@@ -212,7 +317,7 @@ public class FinancialPlanStorageService {
         }
 
         jdbcClient.sql("""
-                DELETE FROM app_user_financial_plan
+            DELETE FROM app_user_financial_plan_cycle
                 WHERE user_sub = :userSub
                 """)
             .param("userSub", authenticatedUser.userSub())
@@ -239,31 +344,53 @@ public class FinancialPlanStorageService {
         }
     }
 
-    private void upsertPlan(AuthenticatedUser authenticatedUser, FinancialPlanData financialPlanData) throws IOException {
+    private void upsertPlan(
+        AuthenticatedUser authenticatedUser,
+        CycleSlot cycleSlot,
+        CyclePeriod cyclePeriod,
+        FinancialPlanData financialPlanData
+    ) throws IOException {
         String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(financialPlanData);
 
         jdbcClient.sql("""
-                INSERT INTO app_user_financial_plan (user_sub, email, display_name, plan_data)
-                VALUES (:userSub, :email, :displayName, CAST(:planData AS jsonb))
-                ON CONFLICT (user_sub)
+            INSERT INTO app_user_financial_plan_cycle (user_sub, email, display_name, cycle_slot, cycle_start_date, cycle_end_date, plan_data)
+                VALUES (:userSub, :email, :displayName, :cycleSlot, :cycleStartDate, :cycleEndDate, CAST(:planData AS jsonb))
+                ON CONFLICT (user_sub, cycle_slot)
                 DO UPDATE SET
                     email = EXCLUDED.email,
                     display_name = EXCLUDED.display_name,
+                    cycle_start_date = EXCLUDED.cycle_start_date,
+                    cycle_end_date = EXCLUDED.cycle_end_date,
                     plan_data = EXCLUDED.plan_data,
                     updated_at = NOW()
                 """)
             .param("userSub", authenticatedUser.userSub())
             .param("email", authenticatedUser.email())
             .param("displayName", authenticatedUser.displayName())
+            .param("cycleSlot", cycleSlot.name())
+            .param("cycleStartDate", cyclePeriod.startDate())
+            .param("cycleEndDate", cyclePeriod.endDate())
             .param("planData", planJson)
             .update();
     }
 
+        private void deletePlan(AuthenticatedUser authenticatedUser, CycleSlot cycleSlot) {
+                jdbcClient.sql("""
+                        DELETE FROM app_user_financial_plan_cycle
+                        WHERE user_sub = :userSub
+                            AND cycle_slot = :cycleSlot
+                        """)
+                        .param("userSub", authenticatedUser.userSub())
+                        .param("cycleSlot", cycleSlot.name())
+                        .update();
+        }
+
     private FinancialPlanData createSamplePlanFromSource() throws IOException {
         String sourcePlanJson = jdbcClient.sql("""
                 SELECT plan_data::text
-                FROM app_user_financial_plan
+                                FROM app_user_financial_plan_cycle
                 WHERE email = :email
+                                    AND cycle_slot = 'CURRENT'
                 ORDER BY updated_at DESC
                 LIMIT 1
                 """)
@@ -278,8 +405,120 @@ public class FinancialPlanStorageService {
 
         FinancialPlanData normalizedData = normalizeIds(sourcePlan);
         FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
-        upsertPlan(new AuthenticatedUser(SAMPLE_PLAN_USER_SUB, SAMPLE_PLAN_EMAIL, SAMPLE_PLAN_DISPLAY_NAME), enrichedData);
+        upsertPlan(
+            new AuthenticatedUser(SAMPLE_PLAN_USER_SUB, SAMPLE_PLAN_EMAIL, SAMPLE_PLAN_DISPLAY_NAME),
+            CycleSlot.CURRENT,
+            currentNaturalCycle(),
+            enrichedData
+        );
         return enrichedData;
+    }
+
+    private StoredCycle loadStoredCycle(AuthenticatedUser authenticatedUser, CycleSlot cycleSlot) {
+        return jdbcClient.sql("""
+                SELECT plan_data::text, cycle_start_date, cycle_end_date, created_at, updated_at
+                                FROM app_user_financial_plan_cycle
+                WHERE user_sub = :userSub
+                  AND cycle_slot = :cycleSlot
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .param("cycleSlot", cycleSlot.name())
+            .query((resultSet, rowNum) -> {
+                try {
+                    return new StoredCycle(
+                        financialPlanCalculationService.withCalculatedSummary(
+                            normalizeIds(objectMapper.readValue(resultSet.getString("plan_data"), FinancialPlanData.class))
+                        ),
+                        resultSet.getObject("cycle_start_date", LocalDate.class),
+                        resultSet.getObject("cycle_end_date", LocalDate.class),
+                        resultSet.getTimestamp("created_at").toInstant(),
+                        resultSet.getTimestamp("updated_at").toInstant()
+                    );
+                } catch (IOException exception) {
+                    throw new IllegalStateException("Failed to read stored cycle", exception);
+                }
+            })
+            .optional()
+            .orElse(null);
+    }
+
+    private FinancialPlanCycleResponse buildResponse(
+        FinancialPlanData financialPlanData,
+        CycleSlot selectedCycle,
+        CyclePeriod currentCycle,
+        CyclePeriod previousCycle,
+        boolean hasSavedPlan,
+        boolean canCloseCycle
+    ) {
+        return new FinancialPlanCycleResponse(
+            financialPlanData,
+            selectedCycle,
+            currentCycle,
+            previousCycle,
+            previousCycle != null,
+            selectedCycle == CycleSlot.PREVIOUS,
+            hasSavedPlan,
+            canCloseCycle
+        );
+    }
+
+    private CyclePeriod cyclePeriodFor(StoredCycle storedCycle, CycleSlot cycleSlot) {
+        if (storedCycle != null && storedCycle.cycleStartDate() != null && storedCycle.cycleEndDate() != null) {
+            return new CyclePeriod(storedCycle.cycleStartDate(), storedCycle.cycleEndDate());
+        }
+
+        return cycleSlot == CycleSlot.CURRENT ? currentNaturalCycle() : previousNaturalCycle();
+    }
+
+    private CyclePeriod currentNaturalCycle() {
+        return cycleWindowFor(LocalDate.now());
+    }
+
+    private CyclePeriod previousNaturalCycle() {
+        CyclePeriod currentCycle = currentNaturalCycle();
+        LocalDate previousStartDate = currentCycle.startDate().minusMonths(1);
+        LocalDate previousEndDate = currentCycle.startDate().minusDays(1);
+        return new CyclePeriod(previousStartDate, previousEndDate);
+    }
+
+    private CyclePeriod nextCyclePeriod(CyclePeriod cyclePeriod) {
+        return new CyclePeriod(cyclePeriod.endDate().plusDays(1), cyclePeriod.endDate().plusMonths(1));
+    }
+
+    private CyclePeriod cycleWindowFor(LocalDate referenceDate) {
+        LocalDate currentCycleStart = referenceDate.getDayOfMonth() >= 16
+            ? referenceDate.withDayOfMonth(16)
+            : referenceDate.minusMonths(1).withDayOfMonth(16);
+        LocalDate currentCycleEnd = currentCycleStart.plusMonths(1).withDayOfMonth(15);
+        return new CyclePeriod(currentCycleStart, currentCycleEnd);
+    }
+
+    private FinancialPlanData buildSeededPlanSafely() {
+        try {
+            return buildSeededPlan();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to build seeded plan", exception);
+        }
+    }
+
+    private boolean hasSavedPlan(StoredCycle storedCycle) {
+        return storedCycle != null && storedCycle.updatedAt().isAfter(storedCycle.createdAt());
+    }
+
+    private boolean canCloseCycle(FinancialPlanData financialPlanData) {
+        boolean allCreditAccountsClosed = financialPlanData.creditAccounts().stream()
+            .allMatch(account -> account.paidThisMonth() && account.statementCycledAfterPayment());
+        boolean allCurrentDebitExpensesCleared = allExpenseItems(financialPlanData).stream()
+            .allMatch(item -> Math.abs(item.current()) < CLOSE_CYCLE_CURRENT_EXPENSE_TOLERANCE);
+        return !financialPlanData.creditAccounts().isEmpty() && allCreditAccountsClosed && allCurrentDebitExpensesCleared;
+    }
+
+    private List<ExpenseItem> allExpenseItems(FinancialPlanData financialPlanData) {
+        List<ExpenseItem> expenseItems = new ArrayList<>();
+        expenseItems.addAll(financialPlanData.planoExpenses());
+        expenseItems.addAll(financialPlanData.sanfordExpenses());
+        expenseItems.addAll(financialPlanData.otherExpenses());
+        return expenseItems;
     }
 
     private AuthenticatedUser authenticatedUser(Authentication authentication) {
@@ -305,6 +544,15 @@ public class FinancialPlanStorageService {
     }
 
     private record AuthenticatedUser(String userSub, String email, String displayName) {
+    }
+
+    private record StoredCycle(
+        FinancialPlanData financialPlanData,
+        LocalDate cycleStartDate,
+        LocalDate cycleEndDate,
+        Instant createdAt,
+        Instant updatedAt
+    ) {
     }
 
     private void initializeStorage() {

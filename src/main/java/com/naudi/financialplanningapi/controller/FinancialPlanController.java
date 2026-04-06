@@ -1,15 +1,21 @@
 package com.naudi.financialplanningapi.controller;
 
 import com.naudi.financialplanningapi.model.FinancialPlanData;
+import com.naudi.financialplanningapi.model.CloseCycleRequest;
+import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
+import com.naudi.financialplanningapi.model.CycleSlot;
+import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/financial-plan")
@@ -22,13 +28,11 @@ public class FinancialPlanController {
     }
 
     @GetMapping
-    public ResponseEntity<FinancialPlanData> getFinancialPlan(Authentication authentication) {
-        FinancialPlanData financialPlanData = financialPlanStorageService.load(authentication);
-        boolean hasSavedPlan = financialPlanStorageService.hasSavedPlan(authentication);
-
-        return ResponseEntity.ok()
-            .header("X-Has-Saved-Plan", Boolean.toString(hasSavedPlan))
-            .body(financialPlanData);
+    public FinancialPlanCycleResponse getFinancialPlan(
+        Authentication authentication,
+        @RequestParam(defaultValue = "current") String cycle
+    ) {
+        return financialPlanStorageService.load(authentication, CycleSlot.fromParameter(cycle));
     }
 
     @GetMapping("/sample")
@@ -37,8 +41,25 @@ public class FinancialPlanController {
     }
 
     @PutMapping
-    public FinancialPlanData saveFinancialPlan(Authentication authentication, @RequestBody FinancialPlanData financialPlanData) {
-        return financialPlanStorageService.save(authentication, financialPlanData);
+    public FinancialPlanCycleResponse saveFinancialPlan(
+        Authentication authentication,
+        @RequestParam(defaultValue = "current") String cycle,
+        @RequestBody FinancialPlanData financialPlanData
+    ) {
+        return financialPlanStorageService.save(authentication, CycleSlot.fromParameter(cycle), financialPlanData);
+    }
+
+    @PostMapping("/close-cycle")
+    public FinancialPlanCycleResponse closeCycle(Authentication authentication, @RequestBody CloseCycleRequest closeCycleRequest) {
+        return financialPlanStorageService.closeCycle(authentication, closeCycleRequest);
+    }
+
+    @PostMapping("/revert-close-cycle")
+    public FinancialPlanCycleResponse revertCloseCycle(
+        Authentication authentication,
+        @RequestBody RevertCloseCycleRequest revertCloseCycleRequest
+    ) {
+        return financialPlanStorageService.revertCloseCycle(authentication, revertCloseCycleRequest);
     }
 
     @DeleteMapping

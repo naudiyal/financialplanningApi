@@ -13,6 +13,39 @@ import org.springframework.stereotype.Service;
 @Service
 public class FinancialPlanCalculationService {
 
+    public FinancialPlanData startNewCycle(FinancialPlanData financialPlanData) {
+        List<CreditAccount> refreshedCreditAccounts = financialPlanData.creditAccounts().stream()
+            .map(account -> new CreditAccount(
+                account.id(),
+                account.name(),
+                account.availableCredit(),
+                advanceIsoDateByOneMonth(account.nextPaymentDate()),
+                false,
+                false,
+                advanceIsoDateByOneMonth(account.lastStatementDate()),
+                account.lastStatementBalance(),
+                account.creditLimit()
+            ))
+            .toList();
+
+        List<ExpenseItem> planoExpenses = advanceExpenseCycle(financialPlanData.planoExpenses());
+        List<ExpenseItem> sanfordExpenses = advanceExpenseCycle(financialPlanData.sanfordExpenses());
+        List<ExpenseItem> otherExpenses = advanceExpenseCycle(financialPlanData.otherExpenses());
+
+        return withCalculatedSummary(new FinancialPlanData(
+            refreshedCreditAccounts,
+            financialPlanData.incomeItems(),
+            financialPlanData.balanceItems(),
+            planoExpenses,
+            sanfordExpenses,
+            otherExpenses,
+            financialPlanData.columnLabels(),
+            financialPlanData.sectionTitles(),
+            financialPlanData.incomeSubsections(),
+            financialPlanData.summary()
+        ));
+    }
+
     public FinancialPlanData withCalculatedSummary(FinancialPlanData financialPlanData) {
         FinancialPlanSummary summary = calculateSummary(financialPlanData);
         return new FinancialPlanData(
@@ -59,7 +92,7 @@ public class FinancialPlanCalculationService {
         double debitCardExpensesTotalNext = allExpenses.stream().mapToDouble(ExpenseItem::next).sum();
         double expenseGrandTotal = totalCurrentMonthPayment + debitCardExpensesTotalCurrent;
         double nextMonthExpenseGrandTotal = totalNextMonthBalance + debitCardExpensesTotalNext;
-        double monthAfterNextMonthExpense = totalDue - totalCurrentMonthPayment - totalNextMonthBalance;
+        double monthAfterNextMonthExpense = totalDue - totalCurrentMonthPayment - totalNextMonthBalance + debitCardExpensesTotalNext;
 
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
         double salaryTransferToChase = biMonthlySalary * 2;
@@ -109,6 +142,33 @@ public class FinancialPlanCalculationService {
             return account.statementCycledAfterPayment() ? account.lastStatementBalance() : totalDueForCard;
         }
         return totalDueForCard - account.lastStatementBalance();
+    }
+
+    private List<ExpenseItem> advanceExpenseCycle(List<ExpenseItem> expenseItems) {
+        return expenseItems.stream()
+            .map(item -> new ExpenseItem(
+                item.id(),
+                item.label(),
+                advanceIsoDateByOneMonth(item.payDate()),
+                item.next(),
+                item.next()
+            ))
+            .toList();
+    }
+
+    private String advanceIsoDateByOneMonth(String value) {
+        String[] parts = value.split("-");
+        if (parts.length != 3) {
+            return value;
+        }
+
+        int year = Integer.parseInt(parts[0]);
+        int month = Integer.parseInt(parts[1]);
+        int day = Integer.parseInt(parts[2]);
+
+        java.time.LocalDate targetDate = java.time.LocalDate.of(year, month, 1).plusMonths(1);
+        int lastDayOfTargetMonth = targetDate.lengthOfMonth();
+        return targetDate.withDayOfMonth(Math.min(day, lastDayOfTargetMonth)).toString();
     }
 
         private double findIncomeAmount(List<IncomeItem> incomeItems, String id) {
