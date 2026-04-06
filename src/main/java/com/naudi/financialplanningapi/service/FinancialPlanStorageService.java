@@ -12,6 +12,7 @@ import com.naudi.financialplanningapi.model.FinancialPlanColumnLabels;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.FinancialPlanSectionTitles;
+import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
@@ -40,6 +41,7 @@ public class FinancialPlanStorageService {
     private static final String SAMPLE_PLAN_EMAIL = "sample@mybetterbudget.com";
     private static final String SAMPLE_PLAN_DISPLAY_NAME = "Sample Plan";
     private static final String SAMPLE_SOURCE_EMAIL = "innaudiyal@gmail.com";
+    private static final String TRACKERS_ALLOWED_EMAIL = "naudiyal@gmail.com";
     private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
@@ -101,12 +103,12 @@ public class FinancialPlanStorageService {
     private static final List<ColumnLabel> CREDIT_ACCOUNT_COLUMN_LABELS = List.of(
         new ColumnLabel("account", "Account"),
         new ColumnLabel("available-credit", "Avail Credit"),
-        new ColumnLabel("pay-date", "Pay Date"),
+        new ColumnLabel("pay-date", "Payment Date"),
         new ColumnLabel("paid", "Paid"),
         new ColumnLabel("statement-cycled", "Stmt Cycled"),
         new ColumnLabel("statement-date", "Stmt Date"),
         new ColumnLabel("statement-balance", "Stmt Balance"),
-        new ColumnLabel("credit-limit", "Limit"),
+        new ColumnLabel("credit-limit", "Credit Limit"),
         new ColumnLabel("due", "Total Due"),
         new ColumnLabel("current-payment", "Curr Payment"),
         new ColumnLabel("next-balance", "Next Balance"),
@@ -197,6 +199,90 @@ public class FinancialPlanStorageService {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to save financial plan data", exception);
         }
+    }
+
+    public List<FinancialPlanViewerUserSummary> listViewerUsers(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureTrackersAccess(authenticatedUser);
+
+        return jdbcClient.sql("""
+                                SELECT user_sub,
+                                             MAX(NULLIF(email, '')) AS email,
+                                             MAX(NULLIF(display_name, '')) AS display_name
+                FROM app_user_financial_plan_cycle
+                                WHERE user_sub <> :userSub
+                  AND user_sub <> :sampleUserSub
+                                GROUP BY user_sub
+                                ORDER BY COALESCE(MAX(NULLIF(display_name, '')), MAX(NULLIF(email, '')), user_sub)
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .param("sampleUserSub", SAMPLE_PLAN_USER_SUB)
+            .query((resultSet, rowNum) -> new FinancialPlanViewerUserSummary(
+                resultSet.getString("user_sub"),
+                resultSet.getString("email"),
+                resultSet.getString("display_name")
+            ))
+            .list();
+    }
+
+    public FinancialPlanCycleResponse loadViewerPlan(Authentication authentication, String userSub, CycleSlot cycleSlot) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureTrackersAccess(authenticatedUser);
+
+        if (userSub == null || userSub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Viewed user is required");
+        }
+
+        StoredCycle currentCycle = loadStoredCycle(userSub, CycleSlot.CURRENT);
+        StoredCycle previousCycle = loadStoredCycle(userSub, CycleSlot.PREVIOUS);
+
+        if (currentCycle == null && previousCycle == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Viewed user was not found");
+        }
+
+        CyclePeriod resolvedPreviousCycle = previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS) : null;
+        CyclePeriod resolvedCurrentCycle = currentCycle != null
+            ? cyclePeriodFor(currentCycle, CycleSlot.CURRENT)
+            : nextCyclePeriod(resolvedPreviousCycle);
+        boolean viewerHasSavedPlan = hasSavedPlan(currentCycle != null ? currentCycle : previousCycle);
+
+        if (cycleSlot == CycleSlot.PREVIOUS) {
+            if (previousCycle == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Previous cycle not found");
+            }
+
+            return buildResponse(
+                financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData()),
+                cycleSlot,
+                resolvedCurrentCycle,
+                resolvedPreviousCycle,
+                viewerHasSavedPlan,
+                false,
+                true
+            );
+        }
+
+        if (currentCycle == null) {
+            return buildResponse(
+                financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData()),
+                CycleSlot.PREVIOUS,
+                resolvedCurrentCycle,
+                resolvedPreviousCycle,
+                viewerHasSavedPlan,
+                false,
+                true
+            );
+        }
+
+        return buildResponse(
+            financialPlanCalculationService.withCalculatedSummary(currentCycle.financialPlanData()),
+            cycleSlot,
+            resolvedCurrentCycle,
+            resolvedPreviousCycle,
+            viewerHasSavedPlan,
+            false,
+            true
+        );
     }
 
     public FinancialPlanCycleResponse closeCycle(Authentication authentication, CloseCycleRequest closeCycleRequest) {
@@ -415,13 +501,17 @@ public class FinancialPlanStorageService {
     }
 
     private StoredCycle loadStoredCycle(AuthenticatedUser authenticatedUser, CycleSlot cycleSlot) {
+                return loadStoredCycle(authenticatedUser.userSub(), cycleSlot);
+        }
+
+        private StoredCycle loadStoredCycle(String userSub, CycleSlot cycleSlot) {
         return jdbcClient.sql("""
                 SELECT plan_data::text, cycle_start_date, cycle_end_date, created_at, updated_at
                                 FROM app_user_financial_plan_cycle
                 WHERE user_sub = :userSub
                   AND cycle_slot = :cycleSlot
                 """)
-            .param("userSub", authenticatedUser.userSub())
+                        .param("userSub", userSub)
             .param("cycleSlot", cycleSlot.name())
             .query((resultSet, rowNum) -> {
                 try {
@@ -450,13 +540,25 @@ public class FinancialPlanStorageService {
         boolean hasSavedPlan,
         boolean canCloseCycle
     ) {
+        return buildResponse(financialPlanData, selectedCycle, currentCycle, previousCycle, hasSavedPlan, canCloseCycle, selectedCycle == CycleSlot.PREVIOUS);
+    }
+
+    private FinancialPlanCycleResponse buildResponse(
+        FinancialPlanData financialPlanData,
+        CycleSlot selectedCycle,
+        CyclePeriod currentCycle,
+        CyclePeriod previousCycle,
+        boolean hasSavedPlan,
+        boolean canCloseCycle,
+        boolean readOnly
+    ) {
         return new FinancialPlanCycleResponse(
             financialPlanData,
             selectedCycle,
             currentCycle,
             previousCycle,
             previousCycle != null,
-            selectedCycle == CycleSlot.PREVIOUS,
+            readOnly,
             hasSavedPlan,
             canCloseCycle
         );
@@ -537,6 +639,12 @@ public class FinancialPlanStorageService {
         String email = stringValue(oauth2User.getAttribute("email"));
         String displayName = stringValue(oauth2User.getAttribute("name"));
         return new AuthenticatedUser(userSub, email, displayName);
+    }
+
+    private void ensureTrackersAccess(AuthenticatedUser authenticatedUser) {
+        if (authenticatedUser.email() == null || !TRACKERS_ALLOWED_EMAIL.equalsIgnoreCase(authenticatedUser.email())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Trackers access is restricted");
+        }
     }
 
     private String stringValue(Object value) {
@@ -641,9 +749,22 @@ public class FinancialPlanStorageService {
             ColumnLabel actualLabel = actualLabels != null && index < actualLabels.size() ? actualLabels.get(index) : null;
             String id = actualLabel != null && actualLabel.id() != null && !actualLabel.id().isBlank() ? actualLabel.id() : defaultLabel.id();
             String label = actualLabel != null && actualLabel.label() != null && !actualLabel.label().isBlank() ? actualLabel.label() : defaultLabel.label();
+            label = normalizeLegacyColumnLabel(id, label);
             normalized.add(new ColumnLabel(id, label));
         }
         return normalized;
+    }
+
+    private String normalizeLegacyColumnLabel(String id, String label) {
+        if ("pay-date".equals(id) && "Pay Date".equals(label)) {
+            return "Payment Date";
+        }
+
+        if ("credit-limit".equals(id) && "Limit".equals(label)) {
+            return "Credit Limit";
+        }
+
+        return label;
     }
 
     private List<CreditAccount> normalizeCreditAccounts(List<CreditAccount> creditAccounts) {

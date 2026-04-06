@@ -5,7 +5,9 @@ import com.naudi.financialplanningapi.model.CloseCycleRequest;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
 import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
+import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +35,20 @@ public class FinancialPlanController {
         @RequestParam(defaultValue = "current") String cycle
     ) {
         return financialPlanStorageService.load(authentication, CycleSlot.fromParameter(cycle));
+    }
+
+    @GetMapping("/users")
+    public List<FinancialPlanViewerUserSummary> listViewerUsers(Authentication authentication) {
+        return financialPlanStorageService.listViewerUsers(authentication);
+    }
+
+    @GetMapping("/viewer")
+    public FinancialPlanCycleResponse getViewerFinancialPlan(
+        Authentication authentication,
+        @RequestParam String userSub,
+        @RequestParam(defaultValue = "current") String cycle
+    ) {
+        return financialPlanStorageService.loadViewerPlan(authentication, userSub, CycleSlot.fromParameter(cycle));
     }
 
     @GetMapping("/sample")
