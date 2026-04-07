@@ -7,12 +7,12 @@ WITH migrated_balance_items AS (
                     jsonb_set(
                         jsonb_set(item.value, '{id}', to_jsonb('savings-next-month'::text), true),
                         '{label}',
-                        to_jsonb('Savings Next Month'::text),
+                        to_jsonb('Savings Next Cycle'::text),
                         true
                     )
                 WHEN item.value->>'id' = 'savings-next-month'
-                    AND COALESCE(item.value->>'label', '') IN ('Net Balance @Next Month End', 'Net balance next month end') THEN
-                    jsonb_set(item.value, '{label}', to_jsonb('Savings Next Month'::text), true)
+                    AND COALESCE(item.value->>'label', '') IN ('Net Balance @Next Month End', 'Net balance next month end', 'Savings Next Month') THEN
+                    jsonb_set(item.value, '{label}', to_jsonb('Savings Next Cycle'::text), true)
                 ELSE item.value
             END
             ORDER BY item.ordinality

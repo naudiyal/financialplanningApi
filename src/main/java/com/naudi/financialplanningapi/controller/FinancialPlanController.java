@@ -3,6 +3,7 @@ package com.naudi.financialplanningapi.controller;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.CloseCycleRequest;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
+import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
@@ -76,6 +77,14 @@ public class FinancialPlanController {
         @RequestBody RevertCloseCycleRequest revertCloseCycleRequest
     ) {
         return financialPlanStorageService.revertCloseCycle(authentication, revertCloseCycleRequest);
+    }
+
+    @PostMapping("/switch-timeline")
+    public FinancialPlanCycleResponse switchTimeline(
+        Authentication authentication,
+        @RequestBody SwitchTimelineRequest switchTimelineRequest
+    ) {
+        return financialPlanStorageService.switchTimeline(authentication, switchTimelineRequest);
     }
 
     @DeleteMapping
