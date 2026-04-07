@@ -10,6 +10,8 @@ This runbook is for the current production strategy:
 
 Historical note: this runbook preserves the original cutover steps, including the backup of the old JSON file. The current application runtime uses PostgreSQL rather than `financial-plan.json`.
 
+For the reverse direction, where current AWS production data needs to be copied back into a local PostgreSQL database, see `FinancialPlanningApi/docs/PROD_TO_LOCAL_DATA_MIGRATION.md`.
+
 ## 1. Export Local Development Data
 
 From the API repo on the Windows development machine:
