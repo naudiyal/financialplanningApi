@@ -630,7 +630,8 @@ public class FinancialPlanStorageService {
             previousCycle != null,
             readOnly,
             hasSavedPlan,
-            canCloseCycle
+            canCloseCycle,
+            lastCycleSavedAt(currentCycle, previousCycle)
         );
     }
 
@@ -730,6 +731,21 @@ public class FinancialPlanStorageService {
 
     private boolean hasSavedPlan(StoredCycle storedCycle) {
         return storedCycle != null && storedCycle.updatedAt().isAfter(storedCycle.createdAt());
+    }
+
+    private Instant lastCycleSavedAt(StoredCycle currentCycle, StoredCycle previousCycle) {
+        Instant currentSavedAt = hasSavedPlan(currentCycle) ? currentCycle.updatedAt() : null;
+        Instant previousSavedAt = hasSavedPlan(previousCycle) ? previousCycle.updatedAt() : null;
+
+        if (currentSavedAt == null) {
+            return previousSavedAt;
+        }
+
+        if (previousSavedAt == null) {
+            return currentSavedAt;
+        }
+
+        return currentSavedAt.isAfter(previousSavedAt) ? currentSavedAt : previousSavedAt;
     }
 
     private boolean canCloseCycle(FinancialPlanData financialPlanData) {

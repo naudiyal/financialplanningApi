@@ -1,5 +1,7 @@
 package com.naudi.financialplanningapi.model;
 
+import java.time.Instant;
+
 public record FinancialPlanCycleResponse(
     FinancialPlanData data,
     CycleSlot selectedCycle,
@@ -9,6 +11,7 @@ public record FinancialPlanCycleResponse(
     boolean hasPreviousCycle,
     boolean readOnly,
     boolean hasSavedPlan,
-    boolean canCloseCycle
+    boolean canCloseCycle,
+    Instant lastCycleSavedAt
 ) {
 }
