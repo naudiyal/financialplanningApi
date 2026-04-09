@@ -168,7 +168,9 @@ public class FinancialPlanStorageService {
                 resolvedCurrentCycle,
                 resolvedPreviousCycle,
                 hasSavedPlan(currentCycle),
-                canCloseCycle(currentData)
+                canCloseCycle(currentData),
+                currentCycle,
+                previousCycle
             );
         }
 
@@ -179,7 +181,9 @@ public class FinancialPlanStorageService {
             resolvedCurrentCycle,
             resolvedPreviousCycle,
             hasSavedPlan(currentCycle),
-            canCloseCycle(currentData)
+            canCloseCycle(currentData),
+            currentCycle,
+            previousCycle
         );
     }
 
@@ -198,6 +202,7 @@ public class FinancialPlanStorageService {
             FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
             upsertSettings(authenticatedUser, timelineType);
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, enrichedData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
             return buildResponse(
                 enrichedData,
                 CycleSlot.CURRENT,
@@ -205,7 +210,9 @@ public class FinancialPlanStorageService {
                 currentPeriod,
                 previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType) : null,
                 true,
-                canCloseCycle(enrichedData)
+                canCloseCycle(enrichedData),
+                savedCurrentCycle,
+                previousCycle
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to save financial plan data", exception);
@@ -273,7 +280,9 @@ public class FinancialPlanStorageService {
                 resolvedPreviousCycle,
                 viewerHasSavedPlan,
                 false,
-                true
+                true,
+                currentCycle,
+                previousCycle
             );
         }
 
@@ -286,7 +295,9 @@ public class FinancialPlanStorageService {
                 resolvedPreviousCycle,
                 viewerHasSavedPlan,
                 false,
-                true
+                true,
+                currentCycle,
+                previousCycle
             );
         }
 
@@ -298,7 +309,9 @@ public class FinancialPlanStorageService {
             resolvedPreviousCycle,
             viewerHasSavedPlan,
             false,
-            true
+            true,
+            currentCycle,
+            previousCycle
         );
     }
 
@@ -332,6 +345,8 @@ public class FinancialPlanStorageService {
             CyclePeriod nextCurrentPeriod = nextCyclePeriod(currentPeriod);
             FinancialPlanData nextCurrentData = financialPlanCalculationService.startNewCycle(archivedCurrentData);
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, nextCurrentPeriod, nextCurrentData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle savedPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
 
             return buildResponse(
                 nextCurrentData,
@@ -340,7 +355,9 @@ public class FinancialPlanStorageService {
                 nextCurrentPeriod,
                 currentPeriod,
                 true,
-                canCloseCycle(nextCurrentData)
+                canCloseCycle(nextCurrentData),
+                savedCurrentCycle,
+                savedPreviousCycle
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to close financial cycle", exception);
@@ -376,6 +393,7 @@ public class FinancialPlanStorageService {
             FinancialPlanData restoredCurrentData = financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData());
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, previousPeriod, restoredCurrentData);
             deletePlan(authenticatedUser, CycleSlot.PREVIOUS);
+            StoredCycle restoredCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
 
             return buildResponse(
                 restoredCurrentData,
@@ -384,7 +402,9 @@ public class FinancialPlanStorageService {
                 previousPeriod,
                 null,
                 true,
-                canCloseCycle(restoredCurrentData)
+                canCloseCycle(restoredCurrentData),
+                restoredCurrentCycle,
+                null
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to revert closed financial cycle", exception);
@@ -460,6 +480,7 @@ public class FinancialPlanStorageService {
             upsertSettings(authenticatedUser, targetTimelineType);
             deletePlan(authenticatedUser, CycleSlot.PREVIOUS);
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, targetCurrentCycle, enrichedData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
 
             return buildResponse(
                 enrichedData,
@@ -468,7 +489,9 @@ public class FinancialPlanStorageService {
                 targetCurrentCycle,
                 null,
                 true,
-                canCloseCycle(enrichedData)
+                canCloseCycle(enrichedData),
+                savedCurrentCycle,
+                null
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to switch timeline", exception);
@@ -606,9 +629,22 @@ public class FinancialPlanStorageService {
         CyclePeriod currentCycle,
         CyclePeriod previousCycle,
         boolean hasSavedPlan,
-        boolean canCloseCycle
+        boolean canCloseCycle,
+        StoredCycle currentStoredCycle,
+        StoredCycle previousStoredCycle
     ) {
-        return buildResponse(financialPlanData, selectedCycle, timelineType, currentCycle, previousCycle, hasSavedPlan, canCloseCycle, selectedCycle == CycleSlot.PREVIOUS);
+        return buildResponse(
+            financialPlanData,
+            selectedCycle,
+            timelineType,
+            currentCycle,
+            previousCycle,
+            hasSavedPlan,
+            canCloseCycle,
+            selectedCycle == CycleSlot.PREVIOUS,
+            currentStoredCycle,
+            previousStoredCycle
+        );
     }
 
     private FinancialPlanCycleResponse buildResponse(
@@ -619,7 +655,9 @@ public class FinancialPlanStorageService {
         CyclePeriod previousCycle,
         boolean hasSavedPlan,
         boolean canCloseCycle,
-        boolean readOnly
+        boolean readOnly,
+        StoredCycle currentStoredCycle,
+        StoredCycle previousStoredCycle
     ) {
         return new FinancialPlanCycleResponse(
             financialPlanData,
@@ -631,7 +669,7 @@ public class FinancialPlanStorageService {
             readOnly,
             hasSavedPlan,
             canCloseCycle,
-            lastCycleSavedAt(currentCycle, previousCycle)
+            lastCycleSavedAt(currentStoredCycle, previousStoredCycle)
         );
     }
 
