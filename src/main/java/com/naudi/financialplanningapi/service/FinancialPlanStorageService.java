@@ -23,7 +23,9 @@ import java.io.InputStream;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.http.HttpStatus;
@@ -47,6 +49,7 @@ public class FinancialPlanStorageService {
     private static final String SAMPLE_SOURCE_EMAIL = "innaudiyal@gmail.com";
     private static final String TRACKERS_ALLOWED_EMAIL = "naudiyal@gmail.com";
     private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
+    private static final String DEFAULT_BANK_EXPENSE_SOURCE_ID = "default-bank";
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Cycle";
     private static final String PREVIOUS_SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
@@ -122,6 +125,7 @@ public class FinancialPlanStorageService {
     private static final List<ColumnLabel> DEBIT_EXPENSE_COLUMN_LABELS = List.of(
         new ColumnLabel("expense", "Expense"),
         new ColumnLabel("pay-date", "Pay Date"),
+        new ColumnLabel("pay-from", "Pay From"),
         new ColumnLabel("current-month", "Current Month"),
         new ColumnLabel("next-month", "Next Month")
     );
@@ -851,16 +855,21 @@ public class FinancialPlanStorageService {
     }
 
     private FinancialPlanData normalizeIds(FinancialPlanData financialPlanData) {
+        List<IncomeSubsection> normalizedIncomeSubsections = normalizeIncomeSubsections(financialPlanData.incomeSubsections());
+        Set<String> validExpensePayFromIds = new HashSet<>();
+        validExpensePayFromIds.add(DEFAULT_BANK_EXPENSE_SOURCE_ID);
+        normalizedIncomeSubsections.forEach(subsection -> validExpensePayFromIds.add(subsection.id()));
+
         return new FinancialPlanData(
             normalizeCreditAccounts(financialPlanData.creditAccounts()),
             normalizeIncomeItems(financialPlanData.incomeItems()),
             normalizeBalanceItems(financialPlanData.balanceItems()),
-            normalizeExpenseItems(financialPlanData.planoExpenses(), PLANO_EXPENSE_IDS),
-            normalizeExpenseItems(financialPlanData.sanfordExpenses(), SANFORD_EXPENSE_IDS),
-            normalizeExpenseItems(financialPlanData.otherExpenses(), OTHER_EXPENSE_IDS),
+            normalizeExpenseItems(financialPlanData.planoExpenses(), PLANO_EXPENSE_IDS, validExpensePayFromIds),
+            normalizeExpenseItems(financialPlanData.sanfordExpenses(), SANFORD_EXPENSE_IDS, validExpensePayFromIds),
+            normalizeExpenseItems(financialPlanData.otherExpenses(), OTHER_EXPENSE_IDS, validExpensePayFromIds),
             normalizeColumnLabels(financialPlanData.columnLabels()),
             normalizeSectionTitles(financialPlanData.sectionTitles()),
-            normalizeIncomeSubsections(financialPlanData.incomeSubsections()),
+            normalizedIncomeSubsections,
             financialPlanData.summary()
         );
     }
@@ -923,9 +932,27 @@ public class FinancialPlanStorageService {
 
     private List<ColumnLabel> normalizeColumnLabelSet(List<ColumnLabel> actualLabels, List<ColumnLabel> defaultLabels) {
         List<ColumnLabel> normalized = new ArrayList<>();
+        java.util.Map<String, ColumnLabel> actualLabelsById = new java.util.HashMap<>();
+
+        if (actualLabels != null) {
+            for (ColumnLabel actualLabel : actualLabels) {
+                if (actualLabel != null && actualLabel.id() != null && !actualLabel.id().isBlank()) {
+                    actualLabelsById.put(actualLabel.id(), actualLabel);
+                }
+            }
+        }
+
         for (int index = 0; index < defaultLabels.size(); index++) {
             ColumnLabel defaultLabel = defaultLabels.get(index);
-            ColumnLabel actualLabel = actualLabels != null && index < actualLabels.size() ? actualLabels.get(index) : null;
+            ColumnLabel actualLabel = actualLabelsById.get(defaultLabel.id());
+
+            if (actualLabel == null && actualLabels != null && index < actualLabels.size()) {
+                ColumnLabel indexedLabel = actualLabels.get(index);
+                if (indexedLabel != null && (indexedLabel.id() == null || indexedLabel.id().isBlank() || defaultLabel.id().equals(indexedLabel.id()))) {
+                    actualLabel = indexedLabel;
+                }
+            }
+
             String id = actualLabel != null && actualLabel.id() != null && !actualLabel.id().isBlank() ? actualLabel.id() : defaultLabel.id();
             String label = actualLabel != null && actualLabel.label() != null && !actualLabel.label().isBlank() ? actualLabel.label() : defaultLabel.label();
             label = normalizeLegacyColumnLabel(id, label);
@@ -1057,7 +1084,7 @@ public class FinancialPlanStorageService {
         return label;
     }
 
-    private List<ExpenseItem> normalizeExpenseItems(List<ExpenseItem> expenseItems, List<String> defaults) {
+    private List<ExpenseItem> normalizeExpenseItems(List<ExpenseItem> expenseItems, List<String> defaults, Set<String> validExpensePayFromIds) {
         List<ExpenseItem> normalized = new ArrayList<>();
         for (int index = 0; index < expenseItems.size(); index++) {
             ExpenseItem item = expenseItems.get(index);
@@ -1065,11 +1092,20 @@ public class FinancialPlanStorageService {
                 normalizeId(item.id(), defaults, index, item.label()),
                 item.label(),
                 item.payDate(),
+                normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds),
                 item.current(),
                 item.next()
             ));
         }
         return normalized;
+    }
+
+    private String normalizeExpensePayFromId(String payFromBankId, Set<String> validExpensePayFromIds) {
+        if (payFromBankId == null || payFromBankId.isBlank() || !validExpensePayFromIds.contains(payFromBankId)) {
+            return DEFAULT_BANK_EXPENSE_SOURCE_ID;
+        }
+
+        return payFromBankId;
     }
 
     private String normalizeId(String currentId, List<String> defaults, int index, String fallbackText) {

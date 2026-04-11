@@ -7,11 +7,15 @@ import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.FinancialPlanSummary;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
 public class FinancialPlanCalculationService {
+
+    private static final String DEFAULT_BANK_EXPENSE_SOURCE_ID = "default-bank";
 
     public FinancialPlanData startNewCycle(FinancialPlanData financialPlanData) {
         List<CreditAccount> refreshedCreditAccounts = financialPlanData.creditAccounts().stream()
@@ -87,9 +91,16 @@ public class FinancialPlanCalculationService {
         allExpenses.addAll(financialPlanData.planoExpenses());
         allExpenses.addAll(financialPlanData.sanfordExpenses());
         allExpenses.addAll(financialPlanData.otherExpenses());
+        Set<String> validExpensePayFromIds = new HashSet<>();
+        validExpensePayFromIds.add(DEFAULT_BANK_EXPENSE_SOURCE_ID);
+        financialPlanData.incomeSubsections().forEach(subsection -> validExpensePayFromIds.add(subsection.id()));
 
         double debitCardExpensesTotalCurrent = allExpenses.stream().mapToDouble(ExpenseItem::current).sum();
         double debitCardExpensesTotalNext = allExpenses.stream().mapToDouble(ExpenseItem::next).sum();
+        double defaultBankDebitExpensesCurrent = allExpenses.stream()
+            .filter(item -> DEFAULT_BANK_EXPENSE_SOURCE_ID.equals(normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds)))
+            .mapToDouble(ExpenseItem::current)
+            .sum();
         double expenseGrandTotal = totalCurrentMonthPayment + debitCardExpensesTotalCurrent;
         double nextMonthExpenseGrandTotal = totalNextMonthBalance + debitCardExpensesTotalNext;
         double monthAfterNextMonthExpense = totalDue - totalCurrentMonthPayment - totalNextMonthBalance + debitCardExpensesTotalNext;
@@ -109,7 +120,11 @@ public class FinancialPlanCalculationService {
         double additionalOtherIncome = findBalanceAmount(financialPlanData.balanceItems(), "additional-other-income");
 
         double totalBalanceChase = salary15th + salary1st + checkingAccountBalanceChase - additionalPaymentsChase;
-        double checkingAccountBalanceMonthEndChase = totalBalanceChase + additionalIncomeChase - expenseGrandTotal;
+        double checkingAccountBalanceMonthEndChase = calculateBankMonthEndBalance(
+            totalBalanceChase,
+            additionalIncomeChase,
+            totalCurrentMonthPayment + defaultBankDebitExpensesCurrent
+        );
         double netBalanceMonthEnd = checkingAccountBalanceMonthEndChase + chaseCdBalance + checkingAccountBalancePnc + additionalOtherIncome;
         double savingsNextMonth = salaryTransferToChase - nextMonthExpenseGrandTotal;
 
@@ -150,10 +165,23 @@ public class FinancialPlanCalculationService {
                 item.id(),
                 item.label(),
                 advanceIsoDateByOneMonth(item.payDate()),
+                item.payFromBankId(),
                 item.next(),
                 item.next()
             ))
             .toList();
+    }
+
+    private double calculateBankMonthEndBalance(double totalBalance, double additionalIncome, double currentDues) {
+        return totalBalance + additionalIncome - currentDues;
+    }
+
+    private String normalizeExpensePayFromId(String payFromBankId, Set<String> validExpensePayFromIds) {
+        if (payFromBankId == null || payFromBankId.isBlank() || !validExpensePayFromIds.contains(payFromBankId)) {
+            return DEFAULT_BANK_EXPENSE_SOURCE_ID;
+        }
+
+        return payFromBankId;
     }
 
     private String advanceIsoDateByOneMonth(String value) {
