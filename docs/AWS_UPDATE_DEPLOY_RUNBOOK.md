@@ -10,6 +10,25 @@ Verified on April 5, 2026:
 - Backend JAR used by systemd: `/opt/financial-planning/api/financial-planning-api-0.0.1-SNAPSHOT.jar`
 - Frontend directory served by Nginx: `/opt/financial-planning/ui`
 
+Verified local Windows tool paths on April 11, 2026:
+
+- npm: `C:\Program Files\nodejs\npm.cmd`
+- node: `C:\Program Files\nodejs\node.exe`
+- Maven: `C:\Users\naudi\OneDrive\workspace\tools\apache-maven-3.9.14\bin\mvn.cmd`
+- psql: `C:\Program Files\PostgreSQL\16\bin\psql.exe`
+
+Reusable promotion scripts now exist in the workspace root:
+
+- `promote-api-aws.bat`
+- `promote-ui-aws.bat`
+- `promote-sql-aws.bat`
+- full guide: `AWS_DEPLOY_AND_VERIFY.md`
+
+SQL handling rule:
+
+- Flyway migrations under `src/main/resources/db/migration` are applied by the backend during API deployment.
+- Manual one-off SQL scripts are not executed by `promote-api-aws.bat`; run them separately with `promote-sql-aws.bat`.
+
 ## 1. Build locally on Windows
 
 From the workspace root:
@@ -21,21 +40,20 @@ cd C:\Users\naudi\OneDrive\workspace\FinancialPlanning
 Build the UI:
 
 ```powershell
-cd .\FinancialPlanningUI
-npm run build
+$env:PATH = "C:\Program Files\nodejs;" + $env:PATH
+& "C:\Program Files\nodejs\npm.cmd" --prefix .\FinancialPlanningUI run build
 ```
 
 Build the API:
 
 ```powershell
-cd ..\FinancialPlanningApi
-mvn package
+& "C:\Users\naudi\OneDrive\workspace\tools\apache-maven-3.9.14\bin\mvn.cmd" -f .\FinancialPlanningApi\pom.xml package
 ```
 
 Return to the workspace root:
 
 ```powershell
-cd ..
+cd .
 ```
 
 ## 2. Upload the build artifacts to EC2
@@ -148,6 +166,7 @@ If you have an API endpoint you want to verify through Nginx, test that as well.
 
 Longer deployment history and troubleshooting are also documented here:
 
+- `AWS_DEPLOY_AND_VERIFY.md`
 - `FinancialPlanningApi/docs/AWS_PROD_DEPLOYMENT_LOG.md`
 - `FinancialPlanningApi/docs/AWS_RDS_EXECUTION_SUMMARY.md`
 - `FinancialPlanningApi/docs/AWS_RDS_CUTOVER_RUNBOOK.md`
