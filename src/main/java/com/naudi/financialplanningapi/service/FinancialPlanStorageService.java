@@ -890,7 +890,7 @@ public class FinancialPlanStorageService {
                 normalizeText(subsection.totalBalanceLabel(), "Total Balance"),
                 normalizeText(subsection.additionalIncomeLabel(), "Additional Income"),
                 subsection.additionalIncome(),
-                normalizeText(subsection.monthEndBalanceLabel(), "Month End Balance")
+                normalizeText(subsection.monthEndBalanceLabel(), "Month End Balance minus Dues")
             ));
         }
 
