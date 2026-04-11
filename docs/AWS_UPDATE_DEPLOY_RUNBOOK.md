@@ -22,7 +22,7 @@ Reusable promotion scripts now exist in the workspace root:
 - `promote-api-aws.bat`
 - `promote-ui-aws.bat`
 - `promote-sql-aws.bat`
-- full guide: `AWS_DEPLOY_AND_VERIFY.md`
+- full guide: `DEPLOY_AND_VERIFY_AWS.md`
 
 SQL handling rule:
 
@@ -166,7 +166,7 @@ If you have an API endpoint you want to verify through Nginx, test that as well.
 
 Longer deployment history and troubleshooting are also documented here:
 
-- `AWS_DEPLOY_AND_VERIFY.md`
+- `DEPLOY_AND_VERIFY_AWS.md`
 - `FinancialPlanningApi/docs/AWS_PROD_DEPLOYMENT_LOG.md`
 - `FinancialPlanningApi/docs/AWS_RDS_EXECUTION_SUMMARY.md`
 - `FinancialPlanningApi/docs/AWS_RDS_CUTOVER_RUNBOOK.md`

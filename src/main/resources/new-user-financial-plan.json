@@ -8,13 +8,13 @@
       "note": null
     },
     {
-      "label": "Salary received on 15th",
+      "label": "First Pay Check",
       "amount": 0,
       "month": "",
       "note": null
     },
     {
-      "label": "Salary received on 1st",
+      "label": "Second Paycheck",
       "amount": 0,
       "month": "",
       "note": null
@@ -40,7 +40,7 @@
   ],
   "balanceItems": [
     {
-      "label": "Checking account balance - primary bank",
+      "label": "Account Balance",
       "amount": 0,
       "month": ""
     },
@@ -50,7 +50,7 @@
       "month": ""
     },
     {
-      "label": "Total balance - primary bank",
+      "label": "Total Balance",
       "amount": 0,
       "month": ""
     },
@@ -60,7 +60,7 @@
       "month": ""
     },
     {
-      "label": "Checking account balance month end - primary bank",
+      "label": "Month End Balance minus Dues",
       "amount": 0,
       "month": ""
     },

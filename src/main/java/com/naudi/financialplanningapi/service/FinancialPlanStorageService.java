@@ -879,9 +879,9 @@ public class FinancialPlanStorageService {
                 normalizeText(subsection.title(), defaultTitle),
                 normalizeText(subsection.biMonthlySalaryLabel(), "Bi-monthly salary"),
                 subsection.biMonthlySalary(),
-                normalizeText(subsection.midMonthSalaryLabel(), "Mid month salary Arrived"),
+                normalizeText(subsection.midMonthSalaryLabel(), "First Pay Check"),
                 subsection.midMonthSalaryArrived(),
-                normalizeText(subsection.monthEndSalaryLabel(), "Month end salary Arrived"),
+                normalizeText(subsection.monthEndSalaryLabel(), "Second Paycheck"),
                 subsection.monthEndSalaryArrived(),
                 normalizeText(subsection.checkingBalanceLabel(), "Account Balance"),
                 subsection.checkingBalance(),
@@ -969,9 +969,10 @@ public class FinancialPlanStorageService {
         List<IncomeItem> normalized = new ArrayList<>();
         for (int index = 0; index < incomeItems.size(); index++) {
             IncomeItem item = incomeItems.get(index);
+            String normalizedId = normalizeId(item.id(), INCOME_ITEM_IDS, index, item.label());
             normalized.add(new IncomeItem(
-                normalizeId(item.id(), INCOME_ITEM_IDS, index, item.label()),
-                item.label(),
+                normalizedId,
+                normalizeIncomeLabel(normalizedId, item.label()),
                 item.amount(),
                 item.month(),
                 item.note()
@@ -996,6 +997,31 @@ public class FinancialPlanStorageService {
     }
 
     private String normalizeBalanceLabel(String id, String label) {
+        if ("checking-balance-chase".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Checking account balance - primary bank".equals(label)
+                || "Checking Account Balance - Chase".equals(label))) {
+            return "Account Balance";
+        }
+
+        if ("total-balance-chase".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Total balance - primary bank".equals(label)
+                || "Total Balance - Chase".equals(label))) {
+            return "Total Balance";
+        }
+
+        if ("checking-balance-month-end-chase".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Checking account balance month end - primary bank".equals(label)
+                || "Checking Account Balance @Month End - Chase".equals(label)
+                || "Checking account balance month end - Chase".equals(label))) {
+            return "Month End Balance minus Dues";
+        }
+
         if (!SAVINGS_NEXT_MONTH_ID.equals(id)) {
             return label;
         }
@@ -1006,6 +1032,26 @@ public class FinancialPlanStorageService {
             || LEGACY_NEXT_MONTH_LABEL.equals(label)
             || "Net balance next month end".equals(label)) {
             return SAVINGS_NEXT_MONTH_LABEL;
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeLabel(String id, String label) {
+        if ("salary-15th".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Salary received on 15th".equals(label)
+                || "Mid month salary Arrived".equals(label))) {
+            return "First Pay Check";
+        }
+
+        if ("salary-1st".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Salary received on 1st".equals(label)
+                || "Month end salary Arrived".equals(label))) {
+            return "Second Paycheck";
         }
 
         return label;
