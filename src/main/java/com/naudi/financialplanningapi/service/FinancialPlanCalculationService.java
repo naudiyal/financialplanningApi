@@ -107,6 +107,9 @@ public class FinancialPlanCalculationService {
 
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
         double salaryTransferToChase = biMonthlySalary * 2;
+        double otherBanksSalaryTransferTotal = financialPlanData.incomeSubsections().stream()
+            .mapToDouble(subsection -> subsection.biMonthlySalary() * 2)
+            .sum();
         double salaryTransfersToPnc = 2000 * 2;
         double totalSalaryPerMonth = salaryTransferToChase;
         double salary15th = findIncomeAmount(financialPlanData.incomeItems(), "salary-15th") == 0 ? 0 : biMonthlySalary;
@@ -126,7 +129,7 @@ public class FinancialPlanCalculationService {
             totalCurrentMonthPayment + defaultBankDebitExpensesCurrent
         );
         double netBalanceMonthEnd = checkingAccountBalanceMonthEndChase + chaseCdBalance + checkingAccountBalancePnc + additionalOtherIncome;
-        double savingsNextMonth = salaryTransferToChase - nextMonthExpenseGrandTotal;
+        double savingsNextMonth = salaryTransferToChase + otherBanksSalaryTransferTotal - nextMonthExpenseGrandTotal;
 
         return new FinancialPlanSummary(
             roundCurrency(totalAvailableCredit),
