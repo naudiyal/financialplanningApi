@@ -455,8 +455,7 @@ public class FinancialPlanStorageService {
     }
 
     public FinancialPlanCycleResponse loadSample(Authentication authentication, CycleSlot cycleSlot, TimelineType timelineType) {
-        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureAdminAccess(authenticatedUser);
+        authenticatedUser(authentication);
 
         try {
             AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
@@ -506,8 +505,7 @@ public class FinancialPlanStorageService {
     }
 
     public BankBalanceHistoryResponse loadSampleBankBalanceHistory(Authentication authentication, TimelineType timelineType, Integer limit) {
-        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureAdminAccess(authenticatedUser);
+        authenticatedUser(authentication);
         return loadBankBalanceHistory(sampleUserSubForTimeline(timelineType), timelineType, sanitizeHistoryLimit(limit));
     }
 
