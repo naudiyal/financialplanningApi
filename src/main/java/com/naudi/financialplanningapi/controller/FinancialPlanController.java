@@ -1,6 +1,7 @@
 package com.naudi.financialplanningapi.controller;
 
 import com.naudi.financialplanningapi.model.FinancialPlanData;
+import com.naudi.financialplanningapi.model.BankBalanceHistoryResponse;
 import com.naudi.financialplanningapi.model.CloseCycleRequest;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
 import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
@@ -50,6 +51,23 @@ public class FinancialPlanController {
         @RequestParam(defaultValue = "current") String cycle
     ) {
         return financialPlanStorageService.loadViewerPlan(authentication, userSub, CycleSlot.fromParameter(cycle));
+    }
+
+    @GetMapping("/history")
+    public BankBalanceHistoryResponse getBankBalanceHistory(
+        Authentication authentication,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return financialPlanStorageService.loadBankBalanceHistory(authentication, limit);
+    }
+
+    @GetMapping("/viewer/history")
+    public BankBalanceHistoryResponse getViewerBankBalanceHistory(
+        Authentication authentication,
+        @RequestParam String userSub,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return financialPlanStorageService.loadViewerBankBalanceHistory(authentication, userSub, limit);
     }
 
     @GetMapping("/sample")

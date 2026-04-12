@@ -1,7 +1,11 @@
 package com.naudi.financialplanningapi.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.type.CollectionType;
 import com.naudi.financialplanningapi.model.BalanceItem;
+import com.naudi.financialplanningapi.model.BankBalanceHistoryCycle;
+import com.naudi.financialplanningapi.model.BankBalanceHistoryPoint;
+import com.naudi.financialplanningapi.model.BankBalanceHistoryResponse;
 import com.naudi.financialplanningapi.model.CloseCycleRequest;
 import com.naudi.financialplanningapi.model.ColumnLabel;
 import com.naudi.financialplanningapi.model.CreditAccount;
@@ -23,9 +27,13 @@ import java.io.InputStream;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.http.HttpStatus;
@@ -33,6 +41,7 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -40,6 +49,7 @@ public class FinancialPlanStorageService {
 
     private static final String PLAN_TABLE = "app_user_financial_plan_cycle";
     private static final String SETTINGS_TABLE = "app_user_financial_plan_settings";
+    private static final String HISTORY_TABLE = "app_user_financial_plan_cycle_history";
 
     private static final String NEW_USER_TEMPLATE_RESOURCE = "new-user-financial-plan.json";
     private static final String SAMPLE_PLAN_MID_TO_MID_USER_SUB = "sample-mid-to-mid-mybetterbudget-com";
@@ -47,7 +57,6 @@ public class FinancialPlanStorageService {
     private static final String SAMPLE_PLAN_EMAIL = "sample@mybetterbudget.com";
     private static final String SAMPLE_PLAN_DISPLAY_NAME = "Sample Plan";
     private static final String SAMPLE_SOURCE_EMAIL = "innaudiyal@gmail.com";
-    private static final String TRACKERS_ALLOWED_EMAIL = "naudiyal@gmail.com";
     private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
     private static final String DEFAULT_BANK_EXPENSE_SOURCE_ID = "default-bank";
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
@@ -55,6 +64,7 @@ public class FinancialPlanStorageService {
     private static final String PREVIOUS_SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
     private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
     private static final double CLOSE_CYCLE_CURRENT_EXPENSE_TOLERANCE = 0.004d;
+    private static final int MAX_HISTORY_LIMIT = 24;
 
     private static final List<String> CREDIT_ACCOUNT_IDS = List.of(
         "apple-card",
@@ -139,15 +149,24 @@ public class FinancialPlanStorageService {
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
     private final FinancialPlanCalculationService financialPlanCalculationService;
+    private final String adminAllowedEmail;
+    private final int defaultBankBalanceHistoryCycleCount;
+    private final CollectionType bankBalanceHistoryPointListType;
 
     public FinancialPlanStorageService(
         ObjectMapper objectMapper,
         JdbcClient jdbcClient,
-        FinancialPlanCalculationService financialPlanCalculationService
+        FinancialPlanCalculationService financialPlanCalculationService,
+        @Value("${app.admin.email:naudiyal@gmail.com}") String adminAllowedEmail,
+        @Value("${app.bank-balance-history.cycle-count:12}") int defaultBankBalanceHistoryCycleCount
     ) {
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
         this.financialPlanCalculationService = financialPlanCalculationService;
+        this.adminAllowedEmail = adminAllowedEmail;
+        this.defaultBankBalanceHistoryCycleCount = defaultBankBalanceHistoryCycleCount;
+        this.bankBalanceHistoryPointListType = objectMapper.getTypeFactory()
+            .constructCollectionType(List.class, BankBalanceHistoryPoint.class);
     }
 
     public FinancialPlanCycleResponse load(Authentication authentication, CycleSlot cycleSlot) {
@@ -225,7 +244,7 @@ public class FinancialPlanStorageService {
 
     public List<FinancialPlanViewerUserSummary> listViewerUsers(Authentication authentication) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureTrackersAccess(authenticatedUser);
+        ensureAdminAccess(authenticatedUser);
 
         return jdbcClient.sql("""
                                 SELECT user_sub,
@@ -251,7 +270,7 @@ public class FinancialPlanStorageService {
 
     public FinancialPlanCycleResponse loadViewerPlan(Authentication authentication, String userSub, CycleSlot cycleSlot) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureTrackersAccess(authenticatedUser);
+        ensureAdminAccess(authenticatedUser);
         TimelineType viewerTimelineType = timelineTypeFor(userSub);
 
         if (userSub == null || userSub.isBlank()) {
@@ -319,6 +338,24 @@ public class FinancialPlanStorageService {
         );
     }
 
+    public BankBalanceHistoryResponse loadBankBalanceHistory(Authentication authentication, Integer limit) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        TimelineType timelineType = timelineTypeFor(authenticatedUser.userSub());
+        return loadBankBalanceHistory(authenticatedUser.userSub(), timelineType, sanitizeHistoryLimit(limit));
+    }
+
+    public BankBalanceHistoryResponse loadViewerBankBalanceHistory(Authentication authentication, String userSub, Integer limit) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        if (userSub == null || userSub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Viewed user is required");
+        }
+
+        TimelineType timelineType = timelineTypeFor(userSub);
+        return loadBankBalanceHistory(userSub, timelineType, sanitizeHistoryLimit(limit));
+    }
+
     public FinancialPlanCycleResponse closeCycle(Authentication authentication, CloseCycleRequest closeCycleRequest) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
 
@@ -329,6 +366,7 @@ public class FinancialPlanStorageService {
         try {
             TimelineType timelineType = timelineTypeFor(authenticatedUser.userSub());
             StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
             CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
 
             if (!currentPeriod.equals(closeCycleRequest.expectedCurrentCycle())) {
@@ -344,6 +382,7 @@ public class FinancialPlanStorageService {
             }
 
             upsertSettings(authenticatedUser, timelineType);
+            archiveCycleHistory(authenticatedUser, timelineType, previousCycle);
             upsertPlan(authenticatedUser, CycleSlot.PREVIOUS, currentPeriod, archivedCurrentData);
 
             CyclePeriod nextCurrentPeriod = nextCyclePeriod(currentPeriod);
@@ -455,6 +494,13 @@ public class FinancialPlanStorageService {
                 """)
             .param("userSub", authenticatedUser.userSub())
             .update();
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_financial_plan_cycle_history
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", authenticatedUser.userSub())
+            .update();
     }
 
     public FinancialPlanCycleResponse switchTimeline(Authentication authentication, SwitchTimelineRequest switchTimelineRequest) {
@@ -500,6 +546,176 @@ public class FinancialPlanStorageService {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to switch timeline", exception);
         }
+    }
+
+    @Transactional
+    public int normalizeAllPlans(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        List<StoredPlanRow> storedPlans = jdbcClient.sql("""
+                SELECT user_sub, cycle_slot, plan_data::text
+                FROM app_user_financial_plan_cycle
+                """)
+            .query((resultSet, rowNum) -> new StoredPlanRow(
+                resultSet.getString("user_sub"),
+                resultSet.getString("cycle_slot"),
+                resultSet.getString("plan_data")
+            ))
+            .list();
+
+        int updatedCount = 0;
+        for (StoredPlanRow storedPlan : storedPlans) {
+            try {
+                FinancialPlanData storedData = objectMapper.readValue(storedPlan.planDataJson(), FinancialPlanData.class);
+                FinancialPlanData normalizedData = normalizeIds(storedData);
+                FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+                String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(enrichedData);
+
+                jdbcClient.sql("""
+                        UPDATE app_user_financial_plan_cycle
+                        SET plan_data = CAST(:planData AS jsonb),
+                            updated_at = NOW()
+                        WHERE user_sub = :userSub
+                          AND cycle_slot = :cycleSlot
+                        """)
+                    .param("planData", planJson)
+                    .param("userSub", storedPlan.userSub())
+                    .param("cycleSlot", storedPlan.cycleSlot())
+                    .update();
+
+                updatedCount++;
+            } catch (IOException exception) {
+                throw new IllegalStateException(
+                    "Failed to normalize stored cycle for user " + storedPlan.userSub() + " and slot " + storedPlan.cycleSlot(),
+                    exception
+                );
+            }
+        }
+
+        return updatedCount;
+    }
+
+    @Transactional
+    public int repairStartToEndCycleDates(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        List<StoredCycleDateRow> liveRows = jdbcClient.sql("""
+                SELECT cycle.user_sub, cycle.cycle_slot, cycle.cycle_start_date, cycle.cycle_end_date
+                FROM app_user_financial_plan_cycle cycle
+                JOIN app_user_financial_plan_settings settings
+                  ON settings.user_sub = cycle.user_sub
+                WHERE settings.timeline_type = 'START_TO_END'
+                """)
+            .query((resultSet, rowNum) -> new StoredCycleDateRow(
+                resultSet.getString("user_sub"),
+                resultSet.getString("cycle_slot"),
+                resultSet.getObject("cycle_start_date", LocalDate.class),
+                resultSet.getObject("cycle_end_date", LocalDate.class)
+            ))
+            .list();
+
+        int updatedCount = 0;
+        for (StoredCycleDateRow liveRow : liveRows) {
+            CyclePeriod correctedCyclePeriod = correctedStartToEndCyclePeriod(liveRow.cycleEndDate());
+            if (liveRow.cycleStartDate().equals(correctedCyclePeriod.startDate())
+                && liveRow.cycleEndDate().equals(correctedCyclePeriod.endDate())) {
+                continue;
+            }
+
+            jdbcClient.sql("""
+                    UPDATE app_user_financial_plan_cycle
+                    SET cycle_start_date = :cycleStartDate,
+                        cycle_end_date = :cycleEndDate,
+                        updated_at = NOW()
+                    WHERE user_sub = :userSub
+                      AND cycle_slot = :cycleSlot
+                    """)
+                .param("cycleStartDate", correctedCyclePeriod.startDate())
+                .param("cycleEndDate", correctedCyclePeriod.endDate())
+                .param("userSub", liveRow.userSub())
+                .param("cycleSlot", liveRow.cycleSlot())
+                .update();
+
+            updatedCount++;
+        }
+
+        List<StoredHistoryDateRow> historyRows = jdbcClient.sql("""
+                SELECT user_sub, timeline_type, cycle_start_date, cycle_end_date, email, display_name, history_data::text
+                FROM app_user_financial_plan_cycle_history
+                WHERE timeline_type = 'START_TO_END'
+                """)
+            .query((resultSet, rowNum) -> new StoredHistoryDateRow(
+                resultSet.getString("user_sub"),
+                resultSet.getString("timeline_type"),
+                resultSet.getObject("cycle_start_date", LocalDate.class),
+                resultSet.getObject("cycle_end_date", LocalDate.class),
+                resultSet.getString("email"),
+                resultSet.getString("display_name"),
+                resultSet.getString("history_data")
+            ))
+            .list();
+
+        for (StoredHistoryDateRow historyRow : historyRows) {
+            CyclePeriod correctedCyclePeriod = correctedStartToEndCyclePeriod(historyRow.cycleEndDate());
+            if (historyRow.cycleStartDate().equals(correctedCyclePeriod.startDate())
+                && historyRow.cycleEndDate().equals(correctedCyclePeriod.endDate())) {
+                continue;
+            }
+
+            jdbcClient.sql("""
+                    INSERT INTO app_user_financial_plan_cycle_history (
+                        user_sub,
+                        timeline_type,
+                        cycle_start_date,
+                        cycle_end_date,
+                        email,
+                        display_name,
+                        history_data
+                    )
+                    VALUES (
+                        :userSub,
+                        :timelineType,
+                        :cycleStartDate,
+                        :cycleEndDate,
+                        :email,
+                        :displayName,
+                        CAST(:historyData AS jsonb)
+                    )
+                    ON CONFLICT (user_sub, timeline_type, cycle_start_date, cycle_end_date)
+                    DO UPDATE SET
+                        email = EXCLUDED.email,
+                        display_name = EXCLUDED.display_name,
+                        history_data = EXCLUDED.history_data,
+                        updated_at = NOW()
+                    """)
+                .param("userSub", historyRow.userSub())
+                .param("timelineType", historyRow.timelineType())
+                .param("cycleStartDate", correctedCyclePeriod.startDate())
+                .param("cycleEndDate", correctedCyclePeriod.endDate())
+                .param("email", historyRow.email())
+                .param("displayName", historyRow.displayName())
+                .param("historyData", historyRow.historyDataJson())
+                .update();
+
+            jdbcClient.sql("""
+                    DELETE FROM app_user_financial_plan_cycle_history
+                    WHERE user_sub = :userSub
+                      AND timeline_type = :timelineType
+                      AND cycle_start_date = :oldCycleStartDate
+                      AND cycle_end_date = :oldCycleEndDate
+                    """)
+                .param("userSub", historyRow.userSub())
+                .param("timelineType", historyRow.timelineType())
+                .param("oldCycleStartDate", historyRow.cycleStartDate())
+                .param("oldCycleEndDate", historyRow.cycleEndDate())
+                .update();
+
+            updatedCount++;
+        }
+
+        return updatedCount;
     }
 
     private FinancialPlanData buildSeededPlan() throws IOException {
@@ -550,6 +766,57 @@ public class FinancialPlanStorageService {
             .param("cycleEndDate", cyclePeriod.endDate())
             .param("planData", planJson)
             .update();
+    }
+
+    private void archiveCycleHistory(
+        AuthenticatedUser authenticatedUser,
+        TimelineType timelineType,
+        StoredCycle storedCycle
+    ) throws IOException {
+        if (storedCycle == null || storedCycle.cycleStartDate() == null || storedCycle.cycleEndDate() == null) {
+            return;
+        }
+
+        String historyJson = objectMapper.writeValueAsString(
+            financialPlanCalculationService.buildBankBalanceHistoryPoints(storedCycle.financialPlanData())
+        );
+
+        jdbcClient.sql("""
+            INSERT INTO app_user_financial_plan_cycle_history (
+                user_sub,
+                timeline_type,
+                cycle_start_date,
+                cycle_end_date,
+                email,
+                display_name,
+                history_data
+            )
+                VALUES (
+                    :userSub,
+                    :timelineType,
+                    :cycleStartDate,
+                    :cycleEndDate,
+                    :email,
+                    :displayName,
+                    CAST(:historyData AS jsonb)
+                )
+            ON CONFLICT (user_sub, timeline_type, cycle_start_date, cycle_end_date)
+                DO UPDATE SET
+                    email = EXCLUDED.email,
+                    display_name = EXCLUDED.display_name,
+                    history_data = EXCLUDED.history_data,
+                    updated_at = NOW()
+            """)
+            .param("userSub", authenticatedUser.userSub())
+            .param("timelineType", timelineType.name())
+            .param("cycleStartDate", storedCycle.cycleStartDate())
+            .param("cycleEndDate", storedCycle.cycleEndDate())
+            .param("email", authenticatedUser.email())
+            .param("displayName", authenticatedUser.displayName())
+            .param("historyData", historyJson)
+            .update();
+
+            pruneArchivedCycleHistory(authenticatedUser.userSub(), timelineType);
     }
 
         private void deletePlan(AuthenticatedUser authenticatedUser, CycleSlot cycleSlot) {
@@ -677,6 +944,117 @@ public class FinancialPlanStorageService {
         );
     }
 
+    private BankBalanceHistoryResponse loadBankBalanceHistory(String userSub, TimelineType timelineType, int limit) {
+        StoredCycle currentCycle = loadStoredCycle(userSub, CycleSlot.CURRENT);
+        StoredCycle previousCycle = loadStoredCycle(userSub, CycleSlot.PREVIOUS);
+        List<BankBalanceHistoryCycle> archivedCycles = loadArchivedBankBalanceHistoryCycles(
+            userSub,
+            timelineType,
+            Math.max(limit - 2, 0)
+        );
+        Map<String, BankBalanceHistoryCycle> cyclesByPeriod = new LinkedHashMap<>();
+
+        archivedCycles.stream()
+            .sorted(Comparator.comparing((BankBalanceHistoryCycle cycle) -> cycle.cycle().startDate()))
+            .forEach(cycle -> cyclesByPeriod.put(cycleKey(cycle.cycle()), cycle));
+
+        if (previousCycle != null) {
+            CyclePeriod previousPeriod = cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType);
+            cyclesByPeriod.put(cycleKey(previousPeriod), new BankBalanceHistoryCycle(
+                previousPeriod,
+                financialPlanCalculationService.buildBankBalanceHistoryPoints(previousCycle.financialPlanData())
+            ));
+        }
+
+        if (currentCycle != null) {
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+            cyclesByPeriod.put(cycleKey(currentPeriod), new BankBalanceHistoryCycle(
+                currentPeriod,
+                financialPlanCalculationService.buildBankBalanceHistoryPoints(currentCycle.financialPlanData())
+            ));
+        }
+
+        List<BankBalanceHistoryCycle> cycles = new ArrayList<>(cyclesByPeriod.values());
+        cycles.sort(Comparator.comparing((BankBalanceHistoryCycle cycle) -> cycle.cycle().startDate()));
+
+        if (cycles.size() > limit) {
+            cycles = new ArrayList<>(cycles.subList(cycles.size() - limit, cycles.size()));
+        }
+
+        return new BankBalanceHistoryResponse(timelineType, cycles);
+    }
+
+    private List<BankBalanceHistoryCycle> loadArchivedBankBalanceHistoryCycles(String userSub, TimelineType timelineType, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+
+        return jdbcClient.sql("""
+                SELECT cycle_start_date, cycle_end_date, history_data::text
+                FROM app_user_financial_plan_cycle_history
+                WHERE user_sub = :userSub
+                  AND timeline_type = :timelineType
+                ORDER BY cycle_end_date DESC, cycle_start_date DESC
+                LIMIT :limit
+                """)
+            .param("userSub", userSub)
+            .param("timelineType", timelineType.name())
+            .param("limit", limit)
+            .query((resultSet, rowNum) -> {
+                try {
+                    return new BankBalanceHistoryCycle(
+                        new CyclePeriod(
+                            resultSet.getObject("cycle_start_date", LocalDate.class),
+                            resultSet.getObject("cycle_end_date", LocalDate.class)
+                        ),
+                        objectMapper.readValue(resultSet.getString("history_data"), bankBalanceHistoryPointListType)
+                    );
+                } catch (IOException exception) {
+                    throw new IllegalStateException("Failed to read archived cycle history", exception);
+                }
+            })
+            .list();
+    }
+
+    private int sanitizeHistoryLimit(Integer limit) {
+        int configuredCount = Math.min(Math.max(defaultBankBalanceHistoryCycleCount, 1), MAX_HISTORY_LIMIT);
+
+        if (limit == null || limit <= 0) {
+            return configuredCount;
+        }
+
+        return Math.min(Math.min(limit, configuredCount), MAX_HISTORY_LIMIT);
+    }
+
+    private void pruneArchivedCycleHistory(String userSub, TimelineType timelineType) {
+        int archivedRetentionCount = Math.max(sanitizeHistoryLimit(null) - 2, 0);
+
+        jdbcClient.sql("""
+                WITH rows_to_delete AS (
+                    SELECT cycle_start_date, cycle_end_date
+                    FROM app_user_financial_plan_cycle_history
+                    WHERE user_sub = :userSub
+                      AND timeline_type = :timelineType
+                    ORDER BY cycle_end_date DESC, cycle_start_date DESC
+                    OFFSET :retentionCount
+                )
+                DELETE FROM app_user_financial_plan_cycle_history history
+                USING rows_to_delete
+                WHERE history.user_sub = :userSub
+                  AND history.timeline_type = :timelineType
+                  AND history.cycle_start_date = rows_to_delete.cycle_start_date
+                  AND history.cycle_end_date = rows_to_delete.cycle_end_date
+                """)
+            .param("userSub", userSub)
+            .param("timelineType", timelineType.name())
+            .param("retentionCount", archivedRetentionCount)
+            .update();
+    }
+
+    private String cycleKey(CyclePeriod cyclePeriod) {
+        return cyclePeriod.startDate() + ":" + cyclePeriod.endDate();
+    }
+
     private CyclePeriod cyclePeriodFor(StoredCycle storedCycle, CycleSlot cycleSlot, TimelineType timelineType) {
         if (storedCycle != null && storedCycle.cycleStartDate() != null && storedCycle.cycleEndDate() != null) {
             return new CyclePeriod(storedCycle.cycleStartDate(), storedCycle.cycleEndDate());
@@ -699,7 +1077,15 @@ public class FinancialPlanStorageService {
     }
 
     private CyclePeriod nextCyclePeriod(CyclePeriod cyclePeriod) {
-        return new CyclePeriod(cyclePeriod.endDate().plusDays(1), cyclePeriod.endDate().plusMonths(1));
+        LocalDate nextStartDate = cyclePeriod.endDate().plusDays(1);
+        LocalDate nextEndDate = nextStartDate.plusMonths(1).minusDays(1);
+        return new CyclePeriod(nextStartDate, nextEndDate);
+    }
+
+    private CyclePeriod correctedStartToEndCyclePeriod(LocalDate cycleEndDate) {
+        LocalDate correctedStartDate = cycleEndDate.withDayOfMonth(1);
+        LocalDate correctedEndDate = correctedStartDate.plusMonths(1).minusDays(1);
+        return new CyclePeriod(correctedStartDate, correctedEndDate);
     }
 
     private CyclePeriod cycleWindowFor(LocalDate referenceDate, TimelineType timelineType) {
@@ -824,9 +1210,9 @@ public class FinancialPlanStorageService {
         return new AuthenticatedUser(userSub, email, displayName);
     }
 
-    private void ensureTrackersAccess(AuthenticatedUser authenticatedUser) {
-        if (authenticatedUser.email() == null || !TRACKERS_ALLOWED_EMAIL.equalsIgnoreCase(authenticatedUser.email())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Trackers access is restricted");
+    private void ensureAdminAccess(AuthenticatedUser authenticatedUser) {
+        if (authenticatedUser.email() == null || !adminAllowedEmail.equalsIgnoreCase(authenticatedUser.email())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access is restricted");
         }
     }
 
@@ -843,6 +1229,23 @@ public class FinancialPlanStorageService {
         LocalDate cycleEndDate,
         Instant createdAt,
         Instant updatedAt
+    ) {
+    }
+
+    private record StoredPlanRow(String userSub, String cycleSlot, String planDataJson) {
+    }
+
+    private record StoredCycleDateRow(String userSub, String cycleSlot, LocalDate cycleStartDate, LocalDate cycleEndDate) {
+    }
+
+    private record StoredHistoryDateRow(
+        String userSub,
+        String timelineType,
+        LocalDate cycleStartDate,
+        LocalDate cycleEndDate,
+        String email,
+        String displayName,
+        String historyDataJson
     ) {
     }
 
@@ -886,24 +1289,93 @@ public class FinancialPlanStorageService {
             normalized.add(new IncomeSubsection(
                 normalizeDynamicId(subsection.id(), "income-subsection", index + 1),
                 normalizeText(subsection.title(), defaultTitle),
-                normalizeText(subsection.biMonthlySalaryLabel(), "Bi-monthly salary"),
+                normalizeIncomeSubsectionBiMonthlySalaryLabel(subsection.biMonthlySalaryLabel()),
                 subsection.biMonthlySalary(),
-                normalizeText(subsection.midMonthSalaryLabel(), "First Pay Check"),
+                normalizeIncomeSubsectionMidMonthSalaryLabel(subsection.midMonthSalaryLabel()),
                 subsection.midMonthSalaryArrived(),
-                normalizeText(subsection.monthEndSalaryLabel(), "Second Paycheck"),
+                normalizeIncomeSubsectionMonthEndSalaryLabel(subsection.monthEndSalaryLabel()),
                 subsection.monthEndSalaryArrived(),
-                normalizeText(subsection.checkingBalanceLabel(), "Account Balance"),
+                normalizeIncomeSubsectionCheckingBalanceLabel(subsection.checkingBalanceLabel()),
                 subsection.checkingBalance(),
-                normalizeText(subsection.additionalPaymentsLabel(), "Additional Payments"),
+                normalizeIncomeSubsectionAdditionalPaymentsLabel(subsection.additionalPaymentsLabel()),
                 subsection.additionalPayments(),
-                normalizeText(subsection.totalBalanceLabel(), "Total Balance"),
-                normalizeText(subsection.additionalIncomeLabel(), "Additional Income"),
+                normalizeIncomeSubsectionTotalBalanceLabel(subsection.totalBalanceLabel()),
+                normalizeIncomeSubsectionAdditionalIncomeLabel(subsection.additionalIncomeLabel()),
                 subsection.additionalIncome(),
-                normalizeText(subsection.monthEndBalanceLabel(), "Month End Balance minus Dues")
+                normalizeIncomeSubsectionMonthEndBalanceLabel(subsection.monthEndBalanceLabel())
             ));
         }
 
         return normalized;
+    }
+
+    private String normalizeIncomeSubsectionBiMonthlySalaryLabel(String label) {
+        return normalizeText(label, "Bi-monthly salary");
+    }
+
+    private String normalizeIncomeSubsectionMidMonthSalaryLabel(String label) {
+        return normalizeIncomeLabel("salary-15th", label);
+    }
+
+    private String normalizeIncomeSubsectionMonthEndSalaryLabel(String label) {
+        return normalizeIncomeLabel("salary-1st", label);
+    }
+
+    private String normalizeIncomeSubsectionCheckingBalanceLabel(String label) {
+        if (label == null
+            || label.isBlank()
+            || "Checking account balance - primary bank".equals(label)
+            || "Checking Account Balance - Chase".equals(label)) {
+            return "Account Balance";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionAdditionalPaymentsLabel(String label) {
+        if (label == null
+            || label.isBlank()
+            || "Additional payments - primary bank".equals(label)
+            || "Additional Payments - Chase".equals(label)) {
+            return "Additional Payments";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionTotalBalanceLabel(String label) {
+        if (label == null
+            || label.isBlank()
+            || "Total balance - primary bank".equals(label)
+            || "Total Balance - Chase".equals(label)) {
+            return "Total Balance";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionAdditionalIncomeLabel(String label) {
+        if (label == null
+            || label.isBlank()
+            || "Additional income - primary bank".equals(label)
+            || "Additional Income - Chase".equals(label)) {
+            return "Additional Income";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionMonthEndBalanceLabel(String label) {
+        if (label == null
+            || label.isBlank()
+            || "Month End Balance".equals(label)
+            || "Checking account balance month end - primary bank".equals(label)
+            || "Checking Account Balance @Month End - Chase".equals(label)
+            || "Checking account balance month end - Chase".equals(label)) {
+            return "Month End Balance minus Dues";
+        }
+
+        return label;
     }
 
     private FinancialPlanSectionTitles normalizeSectionTitles(FinancialPlanSectionTitles sectionTitles) {
@@ -1032,6 +1504,23 @@ public class FinancialPlanStorageService {
             return "Account Balance";
         }
 
+        if ("checking-balance-pnc".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Checking account balance - secondary bank".equals(label)
+                || "Checking Account Balance - Secondary Bank".equals(label)
+                || "Checking balance - PNC".equals(label))) {
+            return "Checking Account Balance - PNC";
+        }
+
+        if ("additional-payments-chase".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Additional payments - primary bank".equals(label)
+                || "Additional Payments - Chase".equals(label))) {
+            return "Additional Payments";
+        }
+
         if ("total-balance-chase".equals(id)
             && (label == null
                 || label.isBlank()
@@ -1040,13 +1529,29 @@ public class FinancialPlanStorageService {
             return "Total Balance";
         }
 
+        if ("additional-income-chase".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Additional income - primary bank".equals(label)
+                || "Additional Income - Chase".equals(label))) {
+            return "Additional Income";
+        }
+
         if ("checking-balance-month-end-chase".equals(id)
             && (label == null
                 || label.isBlank()
+                || "Month End Balance".equals(label)
                 || "Checking account balance month end - primary bank".equals(label)
                 || "Checking Account Balance @Month End - Chase".equals(label)
                 || "Checking account balance month end - Chase".equals(label))) {
             return "Month End Balance minus Dues";
+        }
+
+        if ("additional-other-income".equals(id)
+            && (label == null
+                || label.isBlank()
+                || "Additional other income".equals(label))) {
+            return "Additional Other Income";
         }
 
         if (!SAVINGS_NEXT_MONTH_ID.equals(id)) {

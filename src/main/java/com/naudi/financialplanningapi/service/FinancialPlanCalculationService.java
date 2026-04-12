@@ -1,11 +1,14 @@
 package com.naudi.financialplanningapi.service;
 
 import com.naudi.financialplanningapi.model.BalanceItem;
+import com.naudi.financialplanningapi.model.BankBalanceHistoryPoint;
 import com.naudi.financialplanningapi.model.CreditAccount;
 import com.naudi.financialplanningapi.model.ExpenseItem;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
+import com.naudi.financialplanningapi.model.FinancialPlanSectionTitles;
 import com.naudi.financialplanningapi.model.FinancialPlanSummary;
 import com.naudi.financialplanningapi.model.IncomeItem;
+import com.naudi.financialplanningapi.model.IncomeSubsection;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,17 +38,19 @@ public class FinancialPlanCalculationService {
         List<ExpenseItem> planoExpenses = advanceExpenseCycle(financialPlanData.planoExpenses());
         List<ExpenseItem> sanfordExpenses = advanceExpenseCycle(financialPlanData.sanfordExpenses());
         List<ExpenseItem> otherExpenses = advanceExpenseCycle(financialPlanData.otherExpenses());
+        List<IncomeItem> refreshedIncomeItems = resetIncomeItemsForNewCycle(financialPlanData.incomeItems());
+        List<IncomeSubsection> refreshedIncomeSubsections = resetIncomeSubsectionsForNewCycle(financialPlanData.incomeSubsections());
 
         return withCalculatedSummary(new FinancialPlanData(
             refreshedCreditAccounts,
-            financialPlanData.incomeItems(),
+            refreshedIncomeItems,
             financialPlanData.balanceItems(),
             planoExpenses,
             sanfordExpenses,
             otherExpenses,
             financialPlanData.columnLabels(),
             financialPlanData.sectionTitles(),
-            financialPlanData.incomeSubsections(),
+            refreshedIncomeSubsections,
             financialPlanData.summary()
         ));
     }
@@ -64,6 +69,70 @@ public class FinancialPlanCalculationService {
             financialPlanData.incomeSubsections(),
             summary
         );
+    }
+
+    public List<BankBalanceHistoryPoint> buildBankBalanceHistoryPoints(FinancialPlanData financialPlanData) {
+        double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
+        double salary15th = findIncomeAmount(financialPlanData.incomeItems(), "salary-15th") == 0 ? 0 : biMonthlySalary;
+        double salary1st = findIncomeAmount(financialPlanData.incomeItems(), "salary-1st") == 0 ? 0 : biMonthlySalary;
+        double checkingAccountBalanceChase = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-chase");
+        double additionalPaymentsChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-payments-chase");
+        double additionalIncomeChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-income-chase");
+
+        Set<String> validExpensePayFromIds = new HashSet<>();
+        validExpensePayFromIds.add(DEFAULT_BANK_EXPENSE_SOURCE_ID);
+        financialPlanData.incomeSubsections().forEach(subsection -> validExpensePayFromIds.add(subsection.id()));
+
+        List<ExpenseItem> allExpenses = new ArrayList<>();
+        allExpenses.addAll(financialPlanData.planoExpenses());
+        allExpenses.addAll(financialPlanData.sanfordExpenses());
+        allExpenses.addAll(financialPlanData.otherExpenses());
+
+        double defaultBankDebitExpensesCurrent = allExpenses.stream()
+            .filter(item -> DEFAULT_BANK_EXPENSE_SOURCE_ID.equals(normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds)))
+            .mapToDouble(ExpenseItem::current)
+            .sum();
+        double creditCardCurrentMonthPayments = financialPlanData.creditAccounts().stream()
+            .mapToDouble(account -> account.paidThisMonth() ? 0 : account.lastStatementBalance())
+            .sum();
+        double defaultBankCurrentDues = creditCardCurrentMonthPayments + defaultBankDebitExpensesCurrent;
+        FinancialPlanSectionTitles sectionTitles = financialPlanData.sectionTitles();
+        String defaultBankName = sectionTitles == null
+            || sectionTitles.defaultBank() == null
+            || sectionTitles.defaultBank().isBlank()
+                ? "Chase"
+                : sectionTitles.defaultBank();
+        double defaultBankMonthEndBalanceMinusDues = calculateBankMonthEndBalance(
+            salary15th + salary1st + checkingAccountBalanceChase - additionalPaymentsChase,
+            additionalIncomeChase,
+            defaultBankCurrentDues
+        );
+
+        List<BankBalanceHistoryPoint> historyPoints = new ArrayList<>();
+        historyPoints.add(new BankBalanceHistoryPoint(
+            DEFAULT_BANK_EXPENSE_SOURCE_ID,
+            defaultBankName,
+            roundCurrency(defaultBankMonthEndBalanceMinusDues)
+        ));
+
+        for (IncomeSubsection subsection : financialPlanData.incomeSubsections()) {
+            double subsectionCurrentDues = allExpenses.stream()
+                .filter(item -> subsection.id().equals(normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds)))
+                .mapToDouble(ExpenseItem::current)
+                .sum();
+            double subsectionMonthEndBalanceMinusDues = calculateBankMonthEndBalance(
+                calculateIncomeSubsectionTotalBalance(subsection),
+                subsection.additionalIncome(),
+                subsectionCurrentDues
+            );
+            historyPoints.add(new BankBalanceHistoryPoint(
+                subsection.id(),
+                subsection.title() == null || subsection.title().isBlank() ? "Unnamed Bank" : subsection.title(),
+                roundCurrency(subsectionMonthEndBalanceMinusDues)
+            ));
+        }
+
+        return historyPoints;
     }
 
     private FinancialPlanSummary calculateSummary(FinancialPlanData financialPlanData) {
@@ -160,6 +229,65 @@ public class FinancialPlanCalculationService {
             return account.statementCycledAfterPayment() ? account.lastStatementBalance() : totalDueForCard;
         }
         return totalDueForCard - account.lastStatementBalance();
+    }
+
+    private double calculateIncomeSubsectionStartingBalance(IncomeSubsection subsection) {
+        double startingBalance = subsection.checkingBalance();
+
+        if (!subsection.monthEndSalaryArrived()) {
+            startingBalance += subsection.biMonthlySalary();
+        } else if (!subsection.midMonthSalaryArrived()) {
+            startingBalance += subsection.biMonthlySalary();
+        }
+
+        return startingBalance;
+    }
+
+    private double calculateIncomeSubsectionTotalBalance(IncomeSubsection subsection) {
+        return calculateIncomeSubsectionStartingBalance(subsection) - subsection.additionalPayments();
+    }
+
+    private List<IncomeItem> resetIncomeItemsForNewCycle(List<IncomeItem> incomeItems) {
+        double biMonthlySalary = findIncomeAmount(incomeItems, "bi-monthly-salary");
+
+        return incomeItems.stream()
+            .map(item -> {
+                if ("salary-15th".equals(item.id()) || "salary-1st".equals(item.id())) {
+                    return new IncomeItem(
+                        item.id(),
+                        item.label(),
+                        biMonthlySalary,
+                        item.month(),
+                        item.note()
+                    );
+                }
+
+                return item;
+            })
+            .toList();
+    }
+
+    private List<IncomeSubsection> resetIncomeSubsectionsForNewCycle(List<IncomeSubsection> incomeSubsections) {
+        return incomeSubsections.stream()
+            .map(subsection -> new IncomeSubsection(
+                subsection.id(),
+                subsection.title(),
+                subsection.biMonthlySalaryLabel(),
+                subsection.biMonthlySalary(),
+                subsection.midMonthSalaryLabel(),
+                false,
+                subsection.monthEndSalaryLabel(),
+                false,
+                subsection.checkingBalanceLabel(),
+                subsection.checkingBalance(),
+                subsection.additionalPaymentsLabel(),
+                subsection.additionalPayments(),
+                subsection.totalBalanceLabel(),
+                subsection.additionalIncomeLabel(),
+                subsection.additionalIncome(),
+                subsection.monthEndBalanceLabel()
+            ))
+            .toList();
     }
 
     private List<ExpenseItem> advanceExpenseCycle(List<ExpenseItem> expenseItems) {

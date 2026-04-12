@@ -45,7 +45,7 @@
       "month": ""
     },
     {
-      "label": "Additional payments - primary bank",
+      "label": "Additional Payments",
       "amount": 0,
       "month": ""
     },
@@ -55,7 +55,7 @@
       "month": ""
     },
     {
-      "label": "Additional income - primary bank",
+      "label": "Additional Income",
       "amount": 0,
       "month": ""
     },
@@ -70,12 +70,12 @@
       "month": ""
     },
     {
-      "label": "Checking account balance - secondary bank",
+      "label": "Checking Account Balance - PNC",
       "amount": 0,
       "month": ""
     },
     {
-      "label": "Additional other income",
+      "label": "Additional Other Income",
       "amount": 0,
       "month": ""
     },

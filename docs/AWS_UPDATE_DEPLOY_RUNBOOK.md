@@ -24,6 +24,16 @@ Reusable promotion scripts now exist in the workspace root:
 - `promote-sql-aws.bat`
 - full guide: `DEPLOY_AND_VERIFY_AWS.md`
 
+Related runbook:
+
+- For stale-label normalization and admin backfill steps in both local and AWS environments, see `docs/STALE_LABEL_NORMALIZATION_RUNBOOK.md`
+
+Recent operational note:
+
+- stale-label fixes required API deployment plus rerunning the admin normalization endpoint
+- earlier Bank Balance Movement math and label fixes were UI-only changes and required `promote-ui-aws.bat` plus a hard browser refresh after deployment
+- the newer Change in Bank Balance redesign is not UI-only because the UI now depends on API response fields for `currentData` and `previousData`; deploy `promote-api-aws.bat` first, then `promote-ui-aws.bat`
+
 SQL handling rule:
 
 - Flyway migrations under `src/main/resources/db/migration` are applied by the backend during API deployment.
@@ -161,6 +171,7 @@ If you have an API endpoint you want to verify through Nginx, test that as well.
 - Run `scp` from your Windows machine, not from inside the EC2 SSH session.
 - On EC2, commands run in the Ubuntu shell. If you prefer PowerShell, use `ssh "...commands..."` from Windows PowerShell to execute the remote Linux commands.
 - If frontend uploads reset directory permissions again, rerun the permission commands in Step 5.
+- For the Change in Bank Balance graph rollout, deploy API first and UI second so the browser never loads a UI bundle that expects response fields the live API does not yet return.
 
 ## 8. Current related docs
 
