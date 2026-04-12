@@ -8,9 +8,9 @@ import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
+import com.naudi.financialplanningapi.model.TimelineType;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
 import java.util.List;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -71,8 +71,65 @@ public class FinancialPlanController {
     }
 
     @GetMapping("/sample")
-    public FinancialPlanData getSampleFinancialPlan(Authentication authentication) {
-        return financialPlanStorageService.loadSample(authentication);
+    public FinancialPlanCycleResponse getSampleFinancialPlan(
+        Authentication authentication,
+        @RequestParam(defaultValue = "current") String cycle,
+        @RequestParam TimelineType timelineType
+    ) {
+        return financialPlanStorageService.loadSample(authentication, CycleSlot.fromParameter(cycle), timelineType);
+    }
+
+    @GetMapping("/sample/history")
+    public BankBalanceHistoryResponse getSampleBankBalanceHistory(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType,
+        @RequestParam(required = false) Integer limit
+    ) {
+        return financialPlanStorageService.loadSampleBankBalanceHistory(authentication, timelineType, limit);
+    }
+
+    @PutMapping("/sample")
+    public FinancialPlanCycleResponse saveSampleFinancialPlan(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType,
+        @RequestBody FinancialPlanData financialPlanData
+    ) {
+        return financialPlanStorageService.saveSample(authentication, timelineType, financialPlanData);
+    }
+
+    @PostMapping("/sample/close-cycle")
+    public FinancialPlanCycleResponse closeSampleCycle(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType,
+        @RequestBody CloseCycleRequest closeCycleRequest
+    ) {
+        return financialPlanStorageService.closeSampleCycle(authentication, timelineType, closeCycleRequest);
+    }
+
+    @PostMapping("/sample/revert-close-cycle")
+    public FinancialPlanCycleResponse revertSampleCloseCycle(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType,
+        @RequestBody RevertCloseCycleRequest revertCloseCycleRequest
+    ) {
+        return financialPlanStorageService.revertSampleCloseCycle(authentication, timelineType, revertCloseCycleRequest);
+    }
+
+    @PostMapping("/sample/switch-timeline")
+    public FinancialPlanCycleResponse switchSampleTimeline(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType,
+        @RequestBody SwitchTimelineRequest switchTimelineRequest
+    ) {
+        return financialPlanStorageService.switchSampleTimeline(authentication, timelineType, switchTimelineRequest);
+    }
+
+    @DeleteMapping("/sample")
+    public void deleteSampleFinancialPlan(
+        Authentication authentication,
+        @RequestParam TimelineType timelineType
+    ) {
+        financialPlanStorageService.deleteSample(authentication, timelineType);
     }
 
     @PutMapping

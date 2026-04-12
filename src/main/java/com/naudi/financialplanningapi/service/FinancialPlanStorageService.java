@@ -454,31 +454,271 @@ public class FinancialPlanStorageService {
         }
     }
 
-    public FinancialPlanData loadSample(Authentication authentication) {
+    public FinancialPlanCycleResponse loadSample(Authentication authentication, CycleSlot cycleSlot, TimelineType timelineType) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        TimelineType timelineType = timelineTypeFor(authenticatedUser.userSub());
-        try {
-            String planJson = jdbcClient.sql("""
-                    SELECT plan_data::text
-                                        FROM app_user_financial_plan_cycle
-                    WHERE user_sub = :userSub
-                      AND cycle_slot = 'CURRENT'
-                    """)
-                .param("userSub", sampleUserSubForTimeline(timelineType))
-                .query(String.class)
-                .optional()
-                .orElse(null);
+        ensureAdminAccess(authenticatedUser);
 
-            if (planJson == null) {
-                FinancialPlanData samplePlan = createSamplePlanFromSource(timelineType);
-                return financialPlanCalculationService.withCalculatedSummary(normalizeIds(samplePlan));
+        try {
+            AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
+            StoredCycle currentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            if (currentCycle == null && cycleSlot == CycleSlot.CURRENT) {
+                createSamplePlanFromSource(timelineType);
+                currentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
             }
 
-            FinancialPlanData storedData = objectMapper.readValue(planJson, FinancialPlanData.class);
-            return financialPlanCalculationService.withCalculatedSummary(normalizeIds(storedData));
+            StoredCycle previousCycle = loadStoredCycle(sampleUser, CycleSlot.PREVIOUS);
+            CyclePeriod resolvedCurrentCycle = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+            CyclePeriod resolvedPreviousCycle = previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType) : null;
+            FinancialPlanData currentData = currentCycle != null ? currentCycle.financialPlanData() : buildSeededPlanSafely();
+
+            if (cycleSlot == CycleSlot.PREVIOUS) {
+                if (previousCycle == null) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Previous cycle not found");
+                }
+
+                return buildResponse(
+                    financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData()),
+                    cycleSlot,
+                    timelineType,
+                    resolvedCurrentCycle,
+                    resolvedPreviousCycle,
+                    hasSavedPlan(currentCycle),
+                    canCloseCycle(currentData),
+                    currentCycle,
+                    previousCycle
+                );
+            }
+
+            return buildResponse(
+                currentData,
+                cycleSlot,
+                timelineType,
+                resolvedCurrentCycle,
+                resolvedPreviousCycle,
+                hasSavedPlan(currentCycle),
+                canCloseCycle(currentData),
+                currentCycle,
+                previousCycle
+            );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to read sample financial plan data", exception);
         }
+    }
+
+    public BankBalanceHistoryResponse loadSampleBankBalanceHistory(Authentication authentication, TimelineType timelineType, Integer limit) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+        return loadBankBalanceHistory(sampleUserSubForTimeline(timelineType), timelineType, sanitizeHistoryLimit(limit));
+    }
+
+    public FinancialPlanCycleResponse saveSample(Authentication authentication, TimelineType timelineType, FinancialPlanData financialPlanData) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        try {
+            AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
+            StoredCycle currentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(sampleUser, CycleSlot.PREVIOUS);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+            FinancialPlanData normalizedData = normalizeIds(financialPlanData);
+            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+            upsertSettings(sampleUser, timelineType);
+            upsertPlan(
+                sampleUser,
+                CycleSlot.CURRENT,
+                currentPeriod,
+                enrichedData
+            );
+            StoredCycle savedCurrentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            return buildResponse(
+                enrichedData,
+                CycleSlot.CURRENT,
+                timelineType,
+                currentPeriod,
+                previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType) : null,
+                true,
+                canCloseCycle(enrichedData),
+                savedCurrentCycle,
+                previousCycle
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to save sample financial plan data", exception);
+        }
+    }
+
+    public FinancialPlanCycleResponse closeSampleCycle(Authentication authentication, TimelineType timelineType, CloseCycleRequest closeCycleRequest) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        if (closeCycleRequest == null || closeCycleRequest.financialPlanData() == null || closeCycleRequest.expectedCurrentCycle() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current cycle payload is required");
+        }
+
+        try {
+            AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
+            StoredCycle currentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(sampleUser, CycleSlot.PREVIOUS);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+
+            if (!currentPeriod.equals(closeCycleRequest.expectedCurrentCycle())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle changed. Reload before closing the cycle.");
+            }
+
+            FinancialPlanData archivedCurrentData = financialPlanCalculationService.withCalculatedSummary(
+                normalizeIds(closeCycleRequest.financialPlanData())
+            );
+
+            if (!canCloseCycle(archivedCurrentData)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle is not ready to close");
+            }
+
+            upsertSettings(sampleUser, timelineType);
+            archiveCycleHistory(sampleUser, timelineType, previousCycle);
+            upsertPlan(sampleUser, CycleSlot.PREVIOUS, currentPeriod, archivedCurrentData);
+
+            CyclePeriod nextCurrentPeriod = nextCyclePeriod(currentPeriod);
+            FinancialPlanData nextCurrentData = financialPlanCalculationService.startNewCycle(archivedCurrentData);
+            upsertPlan(sampleUser, CycleSlot.CURRENT, nextCurrentPeriod, nextCurrentData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            StoredCycle savedPreviousCycle = loadStoredCycle(sampleUser, CycleSlot.PREVIOUS);
+
+            return buildResponse(
+                nextCurrentData,
+                CycleSlot.CURRENT,
+                timelineType,
+                nextCurrentPeriod,
+                currentPeriod,
+                true,
+                canCloseCycle(nextCurrentData),
+                savedCurrentCycle,
+                savedPreviousCycle
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to close sample financial cycle", exception);
+        }
+    }
+
+    public FinancialPlanCycleResponse revertSampleCloseCycle(
+        Authentication authentication,
+        TimelineType timelineType,
+        RevertCloseCycleRequest revertCloseCycleRequest
+    ) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        if (revertCloseCycleRequest == null
+            || revertCloseCycleRequest.expectedCurrentCycle() == null
+            || revertCloseCycleRequest.expectedPreviousCycle() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current and previous cycle metadata are required");
+        }
+
+        try {
+            AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
+            StoredCycle currentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(sampleUser, CycleSlot.PREVIOUS);
+
+            if (currentCycle == null || previousCycle == null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "No recently closed cycle is available to reset");
+            }
+
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+            CyclePeriod previousPeriod = cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType);
+
+            if (!currentPeriod.equals(revertCloseCycleRequest.expectedCurrentCycle())
+                || !previousPeriod.equals(revertCloseCycleRequest.expectedPreviousCycle())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Cycle state changed. Reload before resetting.");
+            }
+
+            FinancialPlanData restoredCurrentData = financialPlanCalculationService.withCalculatedSummary(previousCycle.financialPlanData());
+            upsertPlan(sampleUser, CycleSlot.CURRENT, previousPeriod, restoredCurrentData);
+            deletePlan(sampleUser, CycleSlot.PREVIOUS);
+            StoredCycle restoredCurrentCycle = loadStoredCycle(sampleUser, CycleSlot.CURRENT);
+
+            return buildResponse(
+                restoredCurrentData,
+                CycleSlot.CURRENT,
+                timelineType,
+                previousPeriod,
+                null,
+                true,
+                canCloseCycle(restoredCurrentData),
+                restoredCurrentCycle,
+                null
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to revert closed sample financial cycle", exception);
+        }
+    }
+
+    public FinancialPlanCycleResponse switchSampleTimeline(
+        Authentication authentication,
+        TimelineType currentTimelineType,
+        SwitchTimelineRequest switchTimelineRequest
+    ) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        if (switchTimelineRequest == null
+            || switchTimelineRequest.financialPlanData() == null
+            || switchTimelineRequest.expectedCurrentCycle() == null
+            || switchTimelineRequest.targetTimelineType() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Timeline switch payload is required");
+        }
+
+        try {
+            AuthenticatedUser currentSampleUser = sampleUserForTimeline(currentTimelineType);
+            StoredCycle currentCycle = loadStoredCycle(currentSampleUser, CycleSlot.CURRENT);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, currentTimelineType);
+
+            if (!currentPeriod.equals(switchTimelineRequest.expectedCurrentCycle())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle changed. Reload before switching timeline.");
+            }
+
+            TimelineType targetTimelineType = switchTimelineRequest.targetTimelineType();
+            AuthenticatedUser targetSampleUser = sampleUserForTimeline(targetTimelineType);
+            FinancialPlanData normalizedData = normalizeIds(switchTimelineRequest.financialPlanData());
+            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+            CyclePeriod targetCurrentCycle = currentCycleForTimeline(targetTimelineType, LocalDate.now());
+
+            upsertSettings(targetSampleUser, targetTimelineType);
+            deletePlan(targetSampleUser, CycleSlot.PREVIOUS);
+            upsertPlan(targetSampleUser, CycleSlot.CURRENT, targetCurrentCycle, enrichedData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(targetSampleUser, CycleSlot.CURRENT);
+
+            return buildResponse(
+                enrichedData,
+                CycleSlot.CURRENT,
+                targetTimelineType,
+                targetCurrentCycle,
+                null,
+                true,
+                canCloseCycle(enrichedData),
+                savedCurrentCycle,
+                null
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to switch sample timeline", exception);
+        }
+    }
+
+    public void deleteSample(Authentication authentication, TimelineType timelineType) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+        AuthenticatedUser sampleUser = sampleUserForTimeline(timelineType);
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_financial_plan_cycle
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", sampleUser.userSub())
+            .update();
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_financial_plan_cycle_history
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", sampleUser.userSub())
+            .update();
     }
 
     public void delete(Authentication authentication) {
@@ -1135,6 +1375,14 @@ public class FinancialPlanStorageService {
 
     private String sampleUserSubForTimeline(TimelineType timelineType) {
         return timelineType == TimelineType.START_TO_END ? SAMPLE_PLAN_START_TO_END_USER_SUB : SAMPLE_PLAN_MID_TO_MID_USER_SUB;
+    }
+
+    private AuthenticatedUser sampleUserForTimeline(TimelineType timelineType) {
+        return new AuthenticatedUser(
+            sampleUserSubForTimeline(timelineType),
+            SAMPLE_PLAN_EMAIL,
+            sampleDisplayNameForTimeline(timelineType)
+        );
     }
 
     private String sampleDisplayNameForTimeline(TimelineType timelineType) {
