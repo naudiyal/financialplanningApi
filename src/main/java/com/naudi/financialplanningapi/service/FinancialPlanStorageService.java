@@ -60,6 +60,8 @@ public class FinancialPlanStorageService {
     private static final String SAVINGS_NEXT_MONTH_ID = "savings-next-month";
     private static final String DEFAULT_BANK_EXPENSE_SOURCE_ID = "default-bank";
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
+    private static final String FIRST_PAYCHECK_ID = "first-paycheck";
+    private static final String SECOND_PAYCHECK_ID = "second-paycheck";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Cycle";
     private static final String PREVIOUS_SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
     private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
@@ -83,8 +85,8 @@ public class FinancialPlanStorageService {
     );
     private static final List<String> INCOME_ITEM_IDS = List.of(
         "bi-monthly-salary",
-        "salary-15th",
-        "salary-1st",
+        FIRST_PAYCHECK_ID,
+        SECOND_PAYCHECK_ID,
         "salary-transfer-chase-month",
         "salary-transfer-pnc-home-loans",
         "total-salary-per-month"
@@ -121,11 +123,11 @@ public class FinancialPlanStorageService {
     private static final List<ColumnLabel> CREDIT_ACCOUNT_COLUMN_LABELS = List.of(
         new ColumnLabel("account", "Account"),
         new ColumnLabel("available-credit", "Avail Credit"),
+        new ColumnLabel("statement-date", "Last Stmt Date"),
         new ColumnLabel("pay-date", "Payment Date"),
         new ColumnLabel("paid", "Paid"),
-        new ColumnLabel("statement-cycled", "Stmt Cycled"),
-        new ColumnLabel("statement-date", "Stmt Date"),
-        new ColumnLabel("statement-balance", "Stmt Balance"),
+        new ColumnLabel("statement-cycled", "New Stmt Cycled?"),
+        new ColumnLabel("statement-balance", "Latest Stmt Balance"),
         new ColumnLabel("credit-limit", "Credit Limit"),
         new ColumnLabel("due", "Total Due"),
         new ColumnLabel("current-payment", "Curr Payment"),
@@ -1560,11 +1562,11 @@ public class FinancialPlanStorageService {
     }
 
     private String normalizeIncomeSubsectionMidMonthSalaryLabel(String label) {
-        return normalizeIncomeLabel("salary-15th", label);
+        return normalizeIncomeLabel(FIRST_PAYCHECK_ID, label);
     }
 
     private String normalizeIncomeSubsectionMonthEndSalaryLabel(String label) {
-        return normalizeIncomeLabel("salary-1st", label);
+        return normalizeIncomeLabel(SECOND_PAYCHECK_ID, label);
     }
 
     private String normalizeIncomeSubsectionCheckingBalanceLabel(String label) {
@@ -1682,6 +1684,18 @@ public class FinancialPlanStorageService {
     private String normalizeLegacyColumnLabel(String id, String label) {
         if ("pay-date".equals(id) && "Pay Date".equals(label)) {
             return "Payment Date";
+        }
+
+        if ("statement-date".equals(id) && "Stmt Date".equals(label)) {
+            return "Last Stmt Date";
+        }
+
+        if ("statement-cycled".equals(id) && "Stmt Cycled".equals(label)) {
+            return "New Stmt Cycled?";
+        }
+
+        if ("statement-balance".equals(id) && "Stmt Balance".equals(label)) {
+            return "Latest Stmt Balance";
         }
 
         if ("credit-limit".equals(id) && "Limit".equals(label)) {
@@ -1816,23 +1830,41 @@ public class FinancialPlanStorageService {
     }
 
     private String normalizeIncomeLabel(String id, String label) {
-        if ("salary-15th".equals(id)
-            && (label == null
-                || label.isBlank()
-                || "Salary received on 15th".equals(label)
-                || "Mid month salary Arrived".equals(label))) {
-            return "First Pay Check";
+        if (FIRST_PAYCHECK_ID.equals(id) && shouldNormalizeFirstPaycheckLabel(label)) {
+            return "First Paycheck";
         }
 
-        if ("salary-1st".equals(id)
-            && (label == null
-                || label.isBlank()
-                || "Salary received on 1st".equals(label)
-                || "Month end salary Arrived".equals(label))) {
+        if (SECOND_PAYCHECK_ID.equals(id) && shouldNormalizeSecondPaycheckLabel(label)) {
             return "Second Paycheck";
         }
 
         return label;
+    }
+
+    private boolean shouldNormalizeFirstPaycheckLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return true;
+        }
+
+        String comparableLabel = comparableLabel(label);
+        return (comparableLabel.contains("first") && comparableLabel.contains("pay"))
+            || comparableLabel.contains("15")
+            || (comparableLabel.contains("mid") && comparableLabel.contains("salary"));
+    }
+
+    private boolean shouldNormalizeSecondPaycheckLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return true;
+        }
+
+        String comparableLabel = comparableLabel(label);
+        return (comparableLabel.contains("second") && comparableLabel.contains("pay"))
+            || comparableLabel.contains("1st")
+            || (comparableLabel.contains("month") && comparableLabel.contains("end") && comparableLabel.contains("salary"));
+    }
+
+    private String comparableLabel(String label) {
+        return label.toLowerCase(java.util.Locale.US).replaceAll("[^a-z0-9]+", " ").trim();
     }
 
     private List<ExpenseItem> normalizeExpenseItems(List<ExpenseItem> expenseItems, List<String> defaults, Set<String> validExpensePayFromIds) {
@@ -1863,6 +1895,12 @@ public class FinancialPlanStorageService {
         if (LEGACY_NEXT_MONTH_ID.equals(currentId)) {
             return SAVINGS_NEXT_MONTH_ID;
         }
+        if (isLegacyFirstPaycheckId(currentId)) {
+            return FIRST_PAYCHECK_ID;
+        }
+        if (isLegacySecondPaycheckId(currentId)) {
+            return SECOND_PAYCHECK_ID;
+        }
         if (currentId != null && !currentId.isBlank()) {
             return currentId;
         }
@@ -1877,6 +1915,14 @@ public class FinancialPlanStorageService {
             return currentId;
         }
         return prefix + "-" + suffix;
+    }
+
+    private boolean isLegacyFirstPaycheckId(String currentId) {
+        return currentId != null && currentId.startsWith("salary-") && currentId.endsWith("15th");
+    }
+
+    private boolean isLegacySecondPaycheckId(String currentId) {
+        return currentId != null && currentId.startsWith("salary-") && currentId.endsWith("1st");
     }
 
     private String normalizeText(String value, String defaultValue) {

@@ -57,8 +57,10 @@ $env:PATH = "C:\Program Files\nodejs;" + $env:PATH
 Build the API:
 
 ```powershell
-& "C:\Users\naudi\OneDrive\workspace\tools\apache-maven-3.9.14\bin\mvn.cmd" -f .\FinancialPlanningApi\pom.xml package
+& "C:\Users\naudi\OneDrive\workspace\tools\apache-maven-3.9.14\bin\mvn.cmd" -f .\FinancialPlanningApi\pom.xml package -DskipTests
 ```
+
+The API tests use Testcontainers, so local full test runs require Docker. The AWS promotion batch skips tests for packaging and deployment.
 
 Return to the workspace root:
 

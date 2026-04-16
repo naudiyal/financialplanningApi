@@ -73,8 +73,8 @@ public class FinancialPlanCalculationService {
 
     public List<BankBalanceHistoryPoint> buildBankBalanceHistoryPoints(FinancialPlanData financialPlanData) {
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
-        double salary15th = findIncomeAmount(financialPlanData.incomeItems(), "salary-15th") == 0 ? 0 : biMonthlySalary;
-        double salary1st = findIncomeAmount(financialPlanData.incomeItems(), "salary-1st") == 0 ? 0 : biMonthlySalary;
+        double firstPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "first-paycheck") == 0 ? 0 : biMonthlySalary;
+        double secondPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "second-paycheck") == 0 ? 0 : biMonthlySalary;
         double checkingAccountBalanceChase = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-chase");
         double additionalPaymentsChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-payments-chase");
         double additionalIncomeChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-income-chase");
@@ -103,7 +103,7 @@ public class FinancialPlanCalculationService {
                 ? "Chase"
                 : sectionTitles.defaultBank();
         double defaultBankMonthEndBalanceMinusDues = calculateBankMonthEndBalance(
-            salary15th + salary1st + checkingAccountBalanceChase - additionalPaymentsChase,
+            firstPaycheck + secondPaycheck + checkingAccountBalanceChase - additionalPaymentsChase,
             additionalIncomeChase,
             defaultBankCurrentDues
         );
@@ -181,8 +181,8 @@ public class FinancialPlanCalculationService {
             .sum();
         double salaryTransfersToPnc = 2000 * 2;
         double totalSalaryPerMonth = salaryTransferToChase;
-        double salary15th = findIncomeAmount(financialPlanData.incomeItems(), "salary-15th") == 0 ? 0 : biMonthlySalary;
-        double salary1st = findIncomeAmount(financialPlanData.incomeItems(), "salary-1st") == 0 ? 0 : biMonthlySalary;
+        double firstPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "first-paycheck") == 0 ? 0 : biMonthlySalary;
+        double secondPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "second-paycheck") == 0 ? 0 : biMonthlySalary;
 
         double checkingAccountBalanceChase = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-chase");
         double additionalPaymentsChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-payments-chase");
@@ -191,7 +191,7 @@ public class FinancialPlanCalculationService {
         double checkingAccountBalancePnc = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-pnc");
         double additionalOtherIncome = findBalanceAmount(financialPlanData.balanceItems(), "additional-other-income");
 
-        double totalBalanceChase = salary15th + salary1st + checkingAccountBalanceChase - additionalPaymentsChase;
+        double totalBalanceChase = firstPaycheck + secondPaycheck + checkingAccountBalanceChase - additionalPaymentsChase;
         double checkingAccountBalanceMonthEndChase = calculateBankMonthEndBalance(
             totalBalanceChase,
             additionalIncomeChase,
@@ -232,15 +232,10 @@ public class FinancialPlanCalculationService {
     }
 
     private double calculateIncomeSubsectionStartingBalance(IncomeSubsection subsection) {
-        double startingBalance = subsection.checkingBalance();
+        double firstPaycheck = subsection.midMonthSalaryArrived() ? 0 : subsection.biMonthlySalary();
+        double secondPaycheck = subsection.monthEndSalaryArrived() ? 0 : subsection.biMonthlySalary();
 
-        if (!subsection.monthEndSalaryArrived()) {
-            startingBalance += subsection.biMonthlySalary();
-        } else if (!subsection.midMonthSalaryArrived()) {
-            startingBalance += subsection.biMonthlySalary();
-        }
-
-        return startingBalance;
+        return subsection.checkingBalance() + firstPaycheck + secondPaycheck;
     }
 
     private double calculateIncomeSubsectionTotalBalance(IncomeSubsection subsection) {
@@ -252,7 +247,7 @@ public class FinancialPlanCalculationService {
 
         return incomeItems.stream()
             .map(item -> {
-                if ("salary-15th".equals(item.id()) || "salary-1st".equals(item.id())) {
+                if ("first-paycheck".equals(item.id()) || "second-paycheck".equals(item.id())) {
                     return new IncomeItem(
                         item.id(),
                         item.label(),
