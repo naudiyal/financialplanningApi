@@ -123,10 +123,10 @@ public class FinancialPlanStorageService {
     private static final List<ColumnLabel> CREDIT_ACCOUNT_COLUMN_LABELS = List.of(
         new ColumnLabel("account", "Account"),
         new ColumnLabel("available-credit", "Avail Credit"),
-        new ColumnLabel("statement-date", "Last Stmt Date"),
+        new ColumnLabel("statement-date", "Prev Cycle Stmt Date"),
         new ColumnLabel("pay-date", "Payment Date"),
         new ColumnLabel("paid", "Paid"),
-        new ColumnLabel("statement-cycled", "New Stmt Cycled?"),
+        new ColumnLabel("statement-cycled", "Stmt Cycled?"),
         new ColumnLabel("statement-balance", "Latest Stmt Balance"),
         new ColumnLabel("credit-limit", "Credit Limit"),
         new ColumnLabel("due", "Total Due"),
@@ -1686,12 +1686,16 @@ public class FinancialPlanStorageService {
             return "Payment Date";
         }
 
-        if ("statement-date".equals(id) && "Stmt Date".equals(label)) {
-            return "Last Stmt Date";
+        if ("statement-date".equals(id)
+            && ("Stmt Date".equals(label) || "Last Stmt Date".equals(label))) {
+            return "Prev Cycle Stmt Date";
         }
 
-        if ("statement-cycled".equals(id) && "Stmt Cycled".equals(label)) {
-            return "New Stmt Cycled?";
+        if ("statement-cycled".equals(id)
+            && ("Stmt Cycled".equals(label)
+                || "New Stmt Cycled?".equals(label)
+                || "Current Cycle Stmt Cycled?".equals(label))) {
+            return "Stmt Cycled?";
         }
 
         if ("statement-balance".equals(id) && "Stmt Balance".equals(label)) {
@@ -1707,6 +1711,10 @@ public class FinancialPlanStorageService {
 
     private List<CreditAccount> normalizeCreditAccounts(List<CreditAccount> creditAccounts) {
         List<CreditAccount> normalized = new ArrayList<>();
+        if (creditAccounts == null) {
+            return normalized;
+        }
+
         for (int index = 0; index < creditAccounts.size(); index++) {
             CreditAccount account = creditAccounts.get(index);
             normalized.add(new CreditAccount(
@@ -1726,6 +1734,10 @@ public class FinancialPlanStorageService {
 
     private List<IncomeItem> normalizeIncomeItems(List<IncomeItem> incomeItems) {
         List<IncomeItem> normalized = new ArrayList<>();
+        if (incomeItems == null) {
+            return normalized;
+        }
+
         for (int index = 0; index < incomeItems.size(); index++) {
             IncomeItem item = incomeItems.get(index);
             String normalizedId = normalizeId(item.id(), INCOME_ITEM_IDS, index, item.label());
@@ -1742,6 +1754,10 @@ public class FinancialPlanStorageService {
 
     private List<BalanceItem> normalizeBalanceItems(List<BalanceItem> balanceItems) {
         List<BalanceItem> normalized = new ArrayList<>();
+        if (balanceItems == null) {
+            return normalized;
+        }
+
         for (int index = 0; index < balanceItems.size(); index++) {
             BalanceItem item = balanceItems.get(index);
             String normalizedId = normalizeId(item.id(), BALANCE_ITEM_IDS, index, item.label());
@@ -1869,6 +1885,10 @@ public class FinancialPlanStorageService {
 
     private List<ExpenseItem> normalizeExpenseItems(List<ExpenseItem> expenseItems, List<String> defaults, Set<String> validExpensePayFromIds) {
         List<ExpenseItem> normalized = new ArrayList<>();
+        if (expenseItems == null) {
+            return normalized;
+        }
+
         for (int index = 0; index < expenseItems.size(); index++) {
             ExpenseItem item = expenseItems.get(index);
             normalized.add(new ExpenseItem(
