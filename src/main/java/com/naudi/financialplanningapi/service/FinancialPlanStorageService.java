@@ -23,6 +23,7 @@ import com.naudi.financialplanningapi.model.IncomeItem;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
 import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
+import com.naudi.financialplanningapi.support.AdminEmails;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
@@ -146,7 +147,7 @@ public class FinancialPlanStorageService {
         "Credit Card Accounts",
         "Debit Card Expenses",
         "Bank Accounts",
-        "Chase"
+        "Default Bank"
     );
     private static final FinancialPlanViewModes DEFAULT_VIEW_MODES = new FinancialPlanViewModes(
         "table",
@@ -157,7 +158,7 @@ public class FinancialPlanStorageService {
     private final ObjectMapper objectMapper;
     private final JdbcClient jdbcClient;
     private final FinancialPlanCalculationService financialPlanCalculationService;
-    private final String adminAllowedEmail;
+    private final Set<String> adminAllowedEmails;
     private final int defaultBankBalanceHistoryCycleCount;
     private final CollectionType bankBalanceHistoryPointListType;
 
@@ -165,13 +166,13 @@ public class FinancialPlanStorageService {
         ObjectMapper objectMapper,
         JdbcClient jdbcClient,
         FinancialPlanCalculationService financialPlanCalculationService,
-        @Value("${app.admin.email:naudiyal@gmail.com}") String adminAllowedEmail,
+        @Value("${app.admin.emails:naudiyal@gmail.com}") String adminAllowedEmails,
         @Value("${app.bank-balance-history.cycle-count:12}") int defaultBankBalanceHistoryCycleCount
     ) {
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
         this.financialPlanCalculationService = financialPlanCalculationService;
-        this.adminAllowedEmail = adminAllowedEmail;
+        this.adminAllowedEmails = AdminEmails.parse(adminAllowedEmails);
         this.defaultBankBalanceHistoryCycleCount = defaultBankBalanceHistoryCycleCount;
         this.bankBalanceHistoryPointListType = objectMapper.getTypeFactory()
             .constructCollectionType(List.class, BankBalanceHistoryPoint.class);
@@ -1358,7 +1359,7 @@ public class FinancialPlanStorageService {
             .query(String.class)
             .optional()
             .map(TimelineType::fromStoredValue)
-            .orElse(TimelineType.MID_TO_MID);
+                .orElse(TimelineType.START_TO_END);
     }
 
     private void upsertSettings(AuthenticatedUser authenticatedUser, TimelineType timelineType) {
@@ -1465,7 +1466,7 @@ public class FinancialPlanStorageService {
     }
 
     private void ensureAdminAccess(AuthenticatedUser authenticatedUser) {
-        if (authenticatedUser.email() == null || !adminAllowedEmail.equalsIgnoreCase(authenticatedUser.email())) {
+        if (!AdminEmails.contains(adminAllowedEmails, authenticatedUser.email())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access is restricted");
         }
     }
@@ -1870,11 +1871,11 @@ public class FinancialPlanStorageService {
 
     private String normalizeIncomeLabel(String id, String label) {
         if (FIRST_PAYCHECK_ID.equals(id) && shouldNormalizeFirstPaycheckLabel(label)) {
-            return "First Paycheck";
+            return "First Paycheck Arrived?";
         }
 
         if (SECOND_PAYCHECK_ID.equals(id) && shouldNormalizeSecondPaycheckLabel(label)) {
-            return "Second Paycheck";
+            return "Second Paycheck Arrived?";
         }
 
         return label;

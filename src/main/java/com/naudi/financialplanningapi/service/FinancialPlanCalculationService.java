@@ -102,7 +102,7 @@ public class FinancialPlanCalculationService {
         String defaultBankName = sectionTitles == null
             || sectionTitles.defaultBank() == null
             || sectionTitles.defaultBank().isBlank()
-                ? "Chase"
+                ? "Default Bank"
                 : sectionTitles.defaultBank();
         double defaultBankMonthEndBalanceMinusDues = calculateBankMonthEndBalance(
             firstPaycheck + secondPaycheck + checkingAccountBalanceChase - additionalPaymentsChase,

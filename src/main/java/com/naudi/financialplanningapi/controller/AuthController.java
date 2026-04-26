@@ -1,7 +1,9 @@
 package com.naudi.financialplanningapi.controller;
 
 import com.naudi.financialplanningapi.model.AuthUserResponse;
+import com.naudi.financialplanningapi.support.AdminEmails;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -14,10 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final String adminAllowedEmail;
+    private final Set<String> adminAllowedEmails;
 
-    public AuthController(@Value("${app.admin.email:naudiyal@gmail.com}") String adminAllowedEmail) {
-        this.adminAllowedEmail = adminAllowedEmail;
+    public AuthController(@Value("${app.admin.emails:naudiyal@gmail.com}") String adminAllowedEmails) {
+        this.adminAllowedEmails = AdminEmails.parse(adminAllowedEmails);
     }
 
     @GetMapping("/me")
@@ -33,7 +35,7 @@ public class AuthController {
         String email = stringValue(attributes.get("email"));
         String name = stringValue(attributes.getOrDefault("name", authentication.getName()));
         String pictureUrl = stringValue(attributes.get("picture"));
-        boolean admin = email != null && adminAllowedEmail.equalsIgnoreCase(email);
+        boolean admin = AdminEmails.contains(adminAllowedEmails, email);
 
         return new AuthUserResponse(true, admin, email, name, pictureUrl);
     }

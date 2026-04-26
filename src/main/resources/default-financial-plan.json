@@ -139,13 +139,13 @@
       "note": null
     },
     {
-      "label": "First Paycheck",
+      "label": "First Paycheck Arrived?",
       "amount": 0,
       "month": "",
       "note": null
     },
     {
-      "label": "Second Paycheck",
+      "label": "Second Paycheck Arrived?",
       "amount": 0,
       "month": "",
       "note": null
@@ -297,7 +297,7 @@
     "creditAccounts": "Credit Card Accounts",
     "debitExpenses": "Debit Card Expenses",
     "incomeSchedule": "Bank Accounts",
-    "defaultBank": "Chase"
+    "defaultBank": "Default Bank"
   },
   "incomeSubsections": []
 }
