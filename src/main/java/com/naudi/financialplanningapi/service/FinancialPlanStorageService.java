@@ -16,6 +16,7 @@ import com.naudi.financialplanningapi.model.FinancialPlanColumnLabels;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.FinancialPlanSectionTitles;
+import com.naudi.financialplanningapi.model.FinancialPlanViewModes;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
@@ -146,6 +147,11 @@ public class FinancialPlanStorageService {
         "Debit Card Expenses",
         "Bank Accounts",
         "Chase"
+    );
+    private static final FinancialPlanViewModes DEFAULT_VIEW_MODES = new FinancialPlanViewModes(
+        "table",
+        "table",
+        "table"
     );
 
     private final ObjectMapper objectMapper;
@@ -1520,6 +1526,7 @@ public class FinancialPlanStorageService {
             normalizeExpenseItems(financialPlanData.otherExpenses(), OTHER_EXPENSE_IDS, validExpensePayFromIds),
             normalizeColumnLabels(financialPlanData.columnLabels()),
             normalizeSectionTitles(financialPlanData.sectionTitles()),
+            normalizeViewModes(financialPlanData.viewModes()),
             normalizedIncomeSubsections,
             financialPlanData.summary()
         );
@@ -1637,6 +1644,22 @@ public class FinancialPlanStorageService {
             normalizeText(sectionTitles.incomeSchedule(), DEFAULT_SECTION_TITLES.incomeSchedule()),
             normalizeText(sectionTitles.defaultBank(), DEFAULT_SECTION_TITLES.defaultBank())
         );
+    }
+
+    private FinancialPlanViewModes normalizeViewModes(FinancialPlanViewModes viewModes) {
+        if (viewModes == null) {
+            return DEFAULT_VIEW_MODES;
+        }
+
+        return new FinancialPlanViewModes(
+            normalizeViewMode(viewModes.creditAccounts(), DEFAULT_VIEW_MODES.creditAccounts()),
+            normalizeViewMode(viewModes.debitExpenses(), DEFAULT_VIEW_MODES.debitExpenses()),
+            normalizeViewMode(viewModes.bankAccounts(), DEFAULT_VIEW_MODES.bankAccounts())
+        );
+    }
+
+    private String normalizeViewMode(String viewMode, String defaultValue) {
+        return "tab".equalsIgnoreCase(viewMode) ? "tab" : defaultValue;
     }
 
     private FinancialPlanColumnLabels normalizeColumnLabels(FinancialPlanColumnLabels columnLabels) {

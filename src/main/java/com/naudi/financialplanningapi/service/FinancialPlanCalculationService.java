@@ -50,6 +50,7 @@ public class FinancialPlanCalculationService {
             otherExpenses,
             financialPlanData.columnLabels(),
             financialPlanData.sectionTitles(),
+            financialPlanData.viewModes(),
             refreshedIncomeSubsections,
             financialPlanData.summary()
         ));
@@ -66,6 +67,7 @@ public class FinancialPlanCalculationService {
             financialPlanData.otherExpenses(),
             financialPlanData.columnLabels(),
             financialPlanData.sectionTitles(),
+            financialPlanData.viewModes(),
             financialPlanData.incomeSubsections(),
             summary
         );

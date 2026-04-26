@@ -11,6 +11,7 @@ public record FinancialPlanData(
     List<ExpenseItem> otherExpenses,
     FinancialPlanColumnLabels columnLabels,
     FinancialPlanSectionTitles sectionTitles,
+    FinancialPlanViewModes viewModes,
     List<IncomeSubsection> incomeSubsections,
     FinancialPlanSummary summary
 ) {
