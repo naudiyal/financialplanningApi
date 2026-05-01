@@ -30,7 +30,7 @@ public class FinancialPlanCalculationService {
                 false,
                 false,
                 advanceIsoDateByOneMonth(account.lastStatementDate()),
-                account.lastStatementBalance(),
+                calculateNextMonthBalance(account),
                 account.creditLimit()
             ))
             .toList();
