@@ -228,7 +228,15 @@ public class FinancialPlanCalculationService {
     private double calculateNextMonthBalance(CreditAccount account) {
         double totalDueForCard = account.creditLimit() - account.availableCredit();
         if (account.paidThisMonth()) {
-            return account.statementCycledAfterPayment() ? account.lastStatementBalance() : totalDueForCard;
+            if (account.nextPaymentDate().compareTo(account.lastStatementDate()) < 0) {
+                // payment is before statement in this cycle
+                return account.statementCycledAfterPayment()
+                    ? totalDueForCard - account.lastStatementBalance()
+                    : totalDueForCard;
+            } else {
+                // statement is before payment
+                return totalDueForCard;
+            }
         }
         return totalDueForCard - account.lastStatementBalance();
     }
