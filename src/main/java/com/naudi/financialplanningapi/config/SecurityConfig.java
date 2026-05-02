@@ -2,13 +2,19 @@ package com.naudi.financialplanningapi.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -24,7 +30,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+        HttpSecurity http,
+        ClientRegistrationRepository clientRegistrationRepository
+    ) throws Exception {
         http
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
@@ -41,6 +50,9 @@ public class SecurityConfig {
                 )
             )
             .oauth2Login(oauth -> oauth
+                .authorizationEndpoint(authorization -> authorization
+                    .authorizationRequestResolver(authorizationRequestResolver(clientRegistrationRepository))
+                )
                 .successHandler((request, response, authentication) -> response.sendRedirect(uiUrl + "/?login=success"))
                 .failureHandler((request, response, exception) -> response.sendRedirect(uiUrl + "/?login=error"))
             )
@@ -57,6 +69,38 @@ public class SecurityConfig {
             );
 
         return http.build();
+    }
+
+    private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
+        ClientRegistrationRepository clientRegistrationRepository
+    ) {
+        DefaultOAuth2AuthorizationRequestResolver defaultResolver =
+            new DefaultOAuth2AuthorizationRequestResolver(clientRegistrationRepository, "/oauth2/authorization");
+
+        return new OAuth2AuthorizationRequestResolver() {
+            @Override
+            public OAuth2AuthorizationRequest resolve(HttpServletRequest request) {
+                return customizeAuthorizationRequest(defaultResolver.resolve(request));
+            }
+
+            @Override
+            public OAuth2AuthorizationRequest resolve(HttpServletRequest request, String clientRegistrationId) {
+                return customizeAuthorizationRequest(defaultResolver.resolve(request, clientRegistrationId));
+            }
+        };
+    }
+
+    private OAuth2AuthorizationRequest customizeAuthorizationRequest(OAuth2AuthorizationRequest authorizationRequest) {
+        if (authorizationRequest == null) {
+            return null;
+        }
+
+        Map<String, Object> additionalParameters = new HashMap<>(authorizationRequest.getAdditionalParameters());
+        additionalParameters.put("prompt", "select_account");
+
+        return OAuth2AuthorizationRequest.from(authorizationRequest)
+            .additionalParameters(additionalParameters)
+            .build();
     }
 
     private void invalidateSession(HttpServletRequest request) {
