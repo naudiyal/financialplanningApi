@@ -52,11 +52,15 @@ public class FinancialPlanCalculationService {
             financialPlanData.sectionTitles(),
             financialPlanData.viewModes(),
             refreshedIncomeSubsections,
-            financialPlanData.summary()
+            financialPlanData.summary(),
+            null, null, null, null
         ));
     }
 
     public FinancialPlanData withCalculatedSummary(FinancialPlanData financialPlanData) {
+        if (financialPlanData.encryptedData() != null) {
+            return financialPlanData;
+        }
         FinancialPlanSummary summary = calculateSummary(financialPlanData);
         return new FinancialPlanData(
             financialPlanData.creditAccounts(),
@@ -69,11 +73,15 @@ public class FinancialPlanCalculationService {
             financialPlanData.sectionTitles(),
             financialPlanData.viewModes(),
             financialPlanData.incomeSubsections(),
-            summary
+            summary,
+            null, null, null, null
         );
     }
 
     public List<BankBalanceHistoryPoint> buildBankBalanceHistoryPoints(FinancialPlanData financialPlanData) {
+        if (financialPlanData.encryptedData() != null) {
+            return List.of();
+        }
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
         double firstPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "first-paycheck") == 0 ? 0 : biMonthlySalary;
         double secondPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "second-paycheck") == 0 ? 0 : biMonthlySalary;

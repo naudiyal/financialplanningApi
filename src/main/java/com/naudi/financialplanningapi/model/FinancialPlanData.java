@@ -1,7 +1,9 @@
 package com.naudi.financialplanningapi.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record FinancialPlanData(
     List<CreditAccount> creditAccounts,
     List<IncomeItem> incomeItems,
@@ -13,6 +15,10 @@ public record FinancialPlanData(
     FinancialPlanSectionTitles sectionTitles,
     FinancialPlanViewModes viewModes,
     List<IncomeSubsection> incomeSubsections,
-    FinancialPlanSummary summary
+    FinancialPlanSummary summary,
+    String encryptedData,
+    String encryptionIv,
+    String pinVerify,
+    String pinVerifyIv
 ) {
 }

@@ -8,7 +8,6 @@
 | `lastStatementBalance` | stored value (user-entered) |
 | `nextPaymentDate` | stored on account |
 | `lastStatementDate` | stored on account |
-| `cycleStartDate` | start date of the active cycle period |
 | `paidThisMonth` | boolean flag on account |
 | `statementCycledAfterPayment` | boolean flag on account |
 
@@ -25,14 +24,8 @@ if paidThisMonth:
         if statementCycledAfterPayment  →  totalDueForCard - lastStatementBalance
         else                            →  totalDueForCard
 
-    else if statementDate < paymentDate AND statementDate >= cycleStartDate:
-        // statement is within the current cycle but before payment
-        →  totalDueForCard
-        (also display Latest Stmt Balance as totalDueForCard on UI)
-
     else:
-        // statementDate < paymentDate AND statementDate < cycleStartDate
-        // statement is from a prior cycle — show stored lastStatementBalance
+        // statement is before payment
         →  totalDueForCard
 
 else:
@@ -46,14 +39,7 @@ else:
 ## Latest Stmt Balance Display Override
 
 The **stored** `lastStatementBalance` value is never changed by this logic.
-Only the **displayed** value on the UI is overridden.
-
-| Condition | Displayed Value |
-|---|---|
-| `paidThisMonth` AND `statementDate < paymentDate` AND `statementDate < cycleStartDate` | `totalDueForCard` |
-| All other cases | `lastStatementBalance` (stored value) |
-
-The override fires only when the statement date is both before the payment date **and** before the current cycle began — meaning the statement on record is from a prior cycle and has already been superseded by the current balance.
+The UI now also displays the stored `lastStatementBalance` in all cases. There is no separate display override branch anymore.
 
 ---
 

@@ -1,6 +1,8 @@
 package com.naudi.financialplanningapi.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.naudi.financialplanningapi.model.EncryptedHistoryItem;
 import com.fasterxml.jackson.databind.type.CollectionType;
 import com.naudi.financialplanningapi.model.BalanceItem;
 import com.naudi.financialplanningapi.model.BankBalanceHistoryCycle;
@@ -159,6 +161,7 @@ public class FinancialPlanStorageService {
     private final JdbcClient jdbcClient;
     private final FinancialPlanCalculationService financialPlanCalculationService;
     private final Set<String> adminAllowedEmails;
+    private final Set<String> encryptionExemptEmails;
     private final int defaultBankBalanceHistoryCycleCount;
     private final CollectionType bankBalanceHistoryPointListType;
 
@@ -167,12 +170,14 @@ public class FinancialPlanStorageService {
         JdbcClient jdbcClient,
         FinancialPlanCalculationService financialPlanCalculationService,
         @Value("${app.admin.emails:naudiyal@gmail.com}") String adminAllowedEmails,
+        @Value("${app.encryption.exempt.emails:}") String encryptionExemptEmails,
         @Value("${app.bank-balance-history.cycle-count:12}") int defaultBankBalanceHistoryCycleCount
     ) {
         this.objectMapper = objectMapper;
         this.jdbcClient = jdbcClient;
         this.financialPlanCalculationService = financialPlanCalculationService;
         this.adminAllowedEmails = AdminEmails.parse(adminAllowedEmails);
+        this.encryptionExemptEmails = AdminEmails.parse(encryptionExemptEmails);
         this.defaultBankBalanceHistoryCycleCount = defaultBankBalanceHistoryCycleCount;
         this.bankBalanceHistoryPointListType = objectMapper.getTypeFactory()
             .constructCollectionType(List.class, BankBalanceHistoryPoint.class);
@@ -258,7 +263,8 @@ public class FinancialPlanStorageService {
         return jdbcClient.sql("""
                                 SELECT user_sub,
                                              MAX(NULLIF(email, '')) AS email,
-                                             MAX(NULLIF(display_name, '')) AS display_name
+                                             MAX(NULLIF(display_name, '')) AS display_name,
+                                             MAX(updated_at) AS last_updated_at
                 FROM app_user_financial_plan_cycle
                                 WHERE user_sub <> :userSub
                   AND user_sub <> :sampleMidUserSub
@@ -272,7 +278,11 @@ public class FinancialPlanStorageService {
             .query((resultSet, rowNum) -> new FinancialPlanViewerUserSummary(
                 resultSet.getString("user_sub"),
                 resultSet.getString("email"),
-                resultSet.getString("display_name")
+                resultSet.getString("display_name"),
+                resultSet.getTimestamp("last_updated_at") != null
+                    ? resultSet.getTimestamp("last_updated_at").toInstant()
+                    : null,
+                AdminEmails.contains(encryptionExemptEmails, resultSet.getString("email"))
             ))
             .list();
     }
@@ -748,6 +758,46 @@ public class FinancialPlanStorageService {
                 """)
             .param("userSub", authenticatedUser.userSub())
             .update();
+
+        deleteTermsAcceptance(authenticatedUser.userSub());
+    }
+
+    public void deleteAsAdmin(Authentication authentication, String targetUserSub) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        ensureAdminAccess(authenticatedUser);
+
+        if (targetUserSub == null || targetUserSub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target user is required");
+        }
+
+        if (isSampleUser(targetUserSub, null)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Sample plan cannot be deleted");
+        }
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_financial_plan_cycle
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", targetUserSub)
+            .update();
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_financial_plan_cycle_history
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", targetUserSub)
+            .update();
+
+        deleteTermsAcceptance(targetUserSub);
+    }
+
+    private void deleteTermsAcceptance(String userSub) {
+        jdbcClient.sql("""
+            DELETE FROM app_user_terms_acceptance
+                WHERE user_sub = :userSub
+                """)
+            .param("userSub", userSub)
+            .update();
     }
 
     public FinancialPlanCycleResponse switchTimeline(Authentication authentication, SwitchTimelineRequest switchTimelineRequest) {
@@ -1209,7 +1259,8 @@ public class FinancialPlanStorageService {
             CyclePeriod previousPeriod = cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType);
             cyclesByPeriod.put(cycleKey(previousPeriod), new BankBalanceHistoryCycle(
                 previousPeriod,
-                financialPlanCalculationService.buildBankBalanceHistoryPoints(previousCycle.financialPlanData())
+                financialPlanCalculationService.buildBankBalanceHistoryPoints(previousCycle.financialPlanData()),
+                null, null
             ));
         }
 
@@ -1217,7 +1268,8 @@ public class FinancialPlanStorageService {
             CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
             cyclesByPeriod.put(cycleKey(currentPeriod), new BankBalanceHistoryCycle(
                 currentPeriod,
-                financialPlanCalculationService.buildBankBalanceHistoryPoints(currentCycle.financialPlanData())
+                financialPlanCalculationService.buildBankBalanceHistoryPoints(currentCycle.financialPlanData()),
+                null, null
             ));
         }
 
@@ -1249,13 +1301,26 @@ public class FinancialPlanStorageService {
             .param("limit", limit)
             .query((resultSet, rowNum) -> {
                 try {
-                    return new BankBalanceHistoryCycle(
-                        new CyclePeriod(
-                            resultSet.getObject("cycle_start_date", LocalDate.class),
-                            resultSet.getObject("cycle_end_date", LocalDate.class)
-                        ),
-                        objectMapper.readValue(resultSet.getString("history_data"), bankBalanceHistoryPointListType)
+                    CyclePeriod cyclePeriod = new CyclePeriod(
+                        resultSet.getObject("cycle_start_date", LocalDate.class),
+                        resultSet.getObject("cycle_end_date", LocalDate.class)
                     );
+                    String rawHistoryData = resultSet.getString("history_data");
+                    JsonNode historyNode = objectMapper.readTree(rawHistoryData);
+                    if (historyNode.isArray()) {
+                        return new BankBalanceHistoryCycle(
+                            cyclePeriod,
+                            objectMapper.convertValue(historyNode, bankBalanceHistoryPointListType),
+                            null, null
+                        );
+                    } else {
+                        return new BankBalanceHistoryCycle(
+                            cyclePeriod,
+                            List.of(),
+                            historyNode.path("encryptedHistoryData").asText(null),
+                            historyNode.path("encryptionIv").asText(null)
+                        );
+                    }
                 } catch (IOException exception) {
                     throw new IllegalStateException("Failed to read archived cycle history", exception);
                 }
@@ -1513,6 +1578,9 @@ public class FinancialPlanStorageService {
     }
 
     private FinancialPlanData normalizeIds(FinancialPlanData financialPlanData) {
+        if (financialPlanData.encryptedData() != null) {
+            return financialPlanData;
+        }
         List<IncomeSubsection> normalizedIncomeSubsections = normalizeIncomeSubsections(financialPlanData.incomeSubsections());
         Set<String> validExpensePayFromIds = new HashSet<>();
         validExpensePayFromIds.add(DEFAULT_BANK_EXPENSE_SOURCE_ID);
@@ -1529,7 +1597,8 @@ public class FinancialPlanStorageService {
             normalizeSectionTitles(financialPlanData.sectionTitles()),
             normalizeViewModes(financialPlanData.viewModes()),
             normalizedIncomeSubsections,
-            financialPlanData.summary()
+            financialPlanData.summary(),
+            null, null, null, null
         );
     }
 
@@ -1971,5 +2040,34 @@ public class FinancialPlanStorageService {
 
     private String normalizeText(String value, String defaultValue) {
         return value != null && !value.isBlank() ? value : defaultValue;
+    }
+
+    public void bulkEncryptHistory(Authentication authentication, List<EncryptedHistoryItem> items) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        for (EncryptedHistoryItem item : items) {
+            try {
+                String encryptedHistoryJson = objectMapper.writeValueAsString(Map.of(
+                    "encryptedHistoryData", item.encryptedHistoryData(),
+                    "encryptionIv", item.encryptionIv()
+                ));
+                jdbcClient.sql("""
+                    UPDATE app_user_financial_plan_cycle_history
+                    SET history_data = CAST(:historyData AS jsonb), updated_at = NOW()
+                    WHERE user_sub = :userSub AND timeline_type = :timelineType
+                      AND cycle_start_date = :cycleStartDate AND cycle_end_date = :cycleEndDate
+                    """)
+                    .param("userSub", authenticatedUser.userSub())
+                    .param("timelineType", item.timelineType())
+                    .param("cycleStartDate", LocalDate.parse(item.cycleStartDate()))
+                    .param("cycleEndDate", LocalDate.parse(item.cycleEndDate()))
+                    .param("historyData", encryptedHistoryJson)
+                    .update();
+            } catch (IOException e) {
+                throw new IllegalStateException("Failed to bulk encrypt history", e);
+            }
+        }
     }
 }
