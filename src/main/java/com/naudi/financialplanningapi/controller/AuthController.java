@@ -107,6 +107,23 @@ public class AuthController {
         return buildAuthResponse(authenticatedUser);
     }
 
+    @PostMapping("/terms/reset")
+    public AuthUserResponse resetTerms(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is required");
+        }
+
+        jdbcClient.sql("""
+            DELETE FROM app_user_terms_acceptance
+            WHERE user_sub = :userSub
+            """)
+            .param("userSub", authenticatedUser.userSub())
+            .update();
+
+        return buildAuthResponse(authenticatedUser);
+    }
+
     private AuthUserResponse buildAuthResponse(AuthenticatedUser authenticatedUser) {
         TermsAcceptance termsAcceptance = currentTermsAcceptance(authenticatedUser.userSub());
         boolean admin = AdminEmails.contains(adminAllowedEmails, authenticatedUser.email());
