@@ -953,6 +953,17 @@ public class FinancialPlanStorageService {
             StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
             CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, currentTimelineType);
 
+            boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
+            if (!encryptionExempt
+                && currentCycle != null
+                && hasEncryptedPayload(currentCycle.financialPlanData())
+                && !hasEncryptedPayload(switchTimelineRequest.financialPlanData())) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Your tracker is encrypted. Unlock it with your Encryption Key before switching timeline."
+                );
+            }
+
             if (!currentPeriod.equals(switchTimelineRequest.expectedCurrentCycle())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Current cycle changed. Reload before switching timeline.");
             }
