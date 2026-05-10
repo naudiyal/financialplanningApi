@@ -23,6 +23,7 @@ import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
+import com.naudi.financialplanningapi.model.RestoreBackupRequest;
 import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
 import com.naudi.financialplanningapi.support.AdminEmails;
@@ -226,15 +227,52 @@ public class FinancialPlanStorageService {
 
     public FinancialPlanCycleResponse save(Authentication authentication, CycleSlot cycleSlot, FinancialPlanData financialPlanData) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        if (cycleSlot == CycleSlot.PREVIOUS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Previous cycle is read only");
-        }
-
         try {
             TimelineType timelineType = timelineTypeFor(authenticatedUser.userSub());
             StoredCycle currentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
             StoredCycle previousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
             CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+
+            if (cycleSlot == CycleSlot.PREVIOUS) {
+                if (!hasEncryptedPayload(financialPlanData)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Previous cycle is read only");
+                }
+                if (previousCycle == null) {
+                    throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Previous cycle not found");
+                }
+
+                CyclePeriod previousPeriod = cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType);
+                FinancialPlanData normalizedData = normalizeIds(financialPlanData);
+                FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+                upsertSettings(authenticatedUser, timelineType);
+                upsertPlan(authenticatedUser, CycleSlot.PREVIOUS, previousPeriod, enrichedData);
+                StoredCycle savedPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+
+                FinancialPlanData currentData = currentCycle != null ? currentCycle.financialPlanData() : buildSeededPlanSafely();
+                return buildResponse(
+                    enrichedData,
+                    CycleSlot.PREVIOUS,
+                    timelineType,
+                    currentPeriod,
+                    previousPeriod,
+                    hasSavedPlan(currentCycle),
+                    canCloseCycle(currentData),
+                    currentCycle,
+                    savedPreviousCycle
+                );
+            }
+
+            boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
+            if (!encryptionExempt
+                && currentCycle != null
+                && hasEncryptedPayload(currentCycle.financialPlanData())
+                && !hasEncryptedPayload(financialPlanData)) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Your tracker is encrypted. Unlock it with your Encryption Key before saving."
+                );
+            }
+
             FinancialPlanData normalizedData = normalizeIds(financialPlanData);
             FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
             upsertSettings(authenticatedUser, timelineType);
@@ -256,6 +294,105 @@ public class FinancialPlanStorageService {
         }
     }
 
+    @Transactional
+    public FinancialPlanCycleResponse restoreBackup(Authentication authentication, RestoreBackupRequest restoreBackupRequest) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        try {
+            TimelineType timelineType = restoreBackupRequest.timelineType() != null
+                ? restoreBackupRequest.timelineType()
+                : timelineTypeFor(authenticatedUser.userSub());
+
+            boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
+
+            CyclePeriod currentPeriod = restoreBackupRequest.currentCycle() != null
+                ? restoreBackupRequest.currentCycle()
+                : cycleWindowFor(LocalDate.now(), timelineType);
+
+            FinancialPlanData requestCurrentData = restoreBackupRequest.financialPlanData() != null
+                ? restoreBackupRequest.financialPlanData()
+                : buildSeededPlanSafely();
+
+            StoredCycle existingCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            if (!encryptionExempt
+                && existingCurrentCycle != null
+                && hasEncryptedPayload(existingCurrentCycle.financialPlanData())
+                && !hasEncryptedPayload(requestCurrentData)) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Your tracker is encrypted. Unlock it with your Encryption Key before restoring a backup."
+                );
+            }
+
+            FinancialPlanData normalizedCurrentData = normalizeIds(requestCurrentData);
+            FinancialPlanData enrichedCurrentData = financialPlanCalculationService.withCalculatedSummary(normalizedCurrentData);
+
+            upsertSettings(authenticatedUser, timelineType);
+            upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, enrichedCurrentData);
+
+            CyclePeriod previousPeriod = null;
+            FinancialPlanData requestPreviousData = restoreBackupRequest.previousFinancialPlanData();
+
+            if (requestPreviousData != null && restoreBackupRequest.previousCycle() != null) {
+                StoredCycle existingPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+                if (!encryptionExempt
+                    && existingPreviousCycle != null
+                    && hasEncryptedPayload(existingPreviousCycle.financialPlanData())
+                    && !hasEncryptedPayload(requestPreviousData)) {
+                    throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Your tracker is encrypted. Unlock it with your Encryption Key before restoring a backup."
+                    );
+                }
+                previousPeriod = restoreBackupRequest.previousCycle();
+                FinancialPlanData normalizedPreviousData = normalizeIds(requestPreviousData);
+                FinancialPlanData enrichedPreviousData = financialPlanCalculationService.withCalculatedSummary(normalizedPreviousData);
+                upsertPlan(authenticatedUser, CycleSlot.PREVIOUS, previousPeriod, enrichedPreviousData);
+            } else {
+                jdbcClient.sql("""
+                        DELETE FROM app_user_financial_plan_cycle
+                        WHERE user_sub = :userSub
+                          AND cycle_slot = :cycleSlot
+                        """)
+                    .param("userSub", authenticatedUser.userSub())
+                    .param("cycleSlot", CycleSlot.PREVIOUS.name())
+                    .update();
+            }
+
+            StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle savedPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+            CyclePeriod resolvedPrevious = savedPreviousCycle != null
+                ? cyclePeriodFor(savedPreviousCycle, CycleSlot.PREVIOUS, timelineType)
+                : null;
+
+            return buildResponse(
+                enrichedCurrentData,
+                CycleSlot.CURRENT,
+                timelineType,
+                currentPeriod,
+                resolvedPrevious,
+                true,
+                canCloseCycle(enrichedCurrentData),
+                savedCurrentCycle,
+                savedPreviousCycle
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to restore backup", exception);
+        }
+    }
+
+    private boolean hasEncryptedPayload(FinancialPlanData financialPlanData) {
+        if (financialPlanData == null) {
+            return false;
+        }
+
+        String encryptedData = financialPlanData.encryptedData();
+        String encryptionIv = financialPlanData.encryptionIv();
+        return encryptedData != null
+            && !encryptedData.isBlank()
+            && encryptionIv != null
+            && !encryptionIv.isBlank();
+    }
+
     public List<FinancialPlanViewerUserSummary> listViewerUsers(Authentication authentication) {
         AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
         ensureAdminAccess(authenticatedUser);
@@ -264,7 +401,8 @@ public class FinancialPlanStorageService {
                                 SELECT user_sub,
                                              MAX(NULLIF(email, '')) AS email,
                                              MAX(NULLIF(display_name, '')) AS display_name,
-                                             MAX(updated_at) AS last_updated_at
+                                             MAX(updated_at) AS last_updated_at,
+                                             BOOL_OR(COALESCE(NULLIF(plan_data->>'encryptedData', ''), '') <> '') AS has_encrypted_data
                 FROM app_user_financial_plan_cycle
                                 WHERE user_sub <> :userSub
                   AND user_sub <> :sampleMidUserSub
@@ -282,7 +420,7 @@ public class FinancialPlanStorageService {
                 resultSet.getTimestamp("last_updated_at") != null
                     ? resultSet.getTimestamp("last_updated_at").toInstant()
                     : null,
-                AdminEmails.contains(encryptionExemptEmails, resultSet.getString("email"))
+                !resultSet.getBoolean("has_encrypted_data")
             ))
             .list();
     }

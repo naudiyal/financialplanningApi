@@ -8,6 +8,7 @@ import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
+import com.naudi.financialplanningapi.model.RestoreBackupRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
 import java.util.List;
@@ -141,6 +142,14 @@ public class FinancialPlanController {
         @RequestBody FinancialPlanData financialPlanData
     ) {
         return financialPlanStorageService.save(authentication, CycleSlot.fromParameter(cycle), financialPlanData);
+    }
+
+    @PostMapping("/restore-backup")
+    public FinancialPlanCycleResponse restoreBackup(
+        Authentication authentication,
+        @RequestBody RestoreBackupRequest restoreBackupRequest
+    ) {
+        return financialPlanStorageService.restoreBackup(authentication, restoreBackupRequest);
     }
 
     @PostMapping("/close-cycle")

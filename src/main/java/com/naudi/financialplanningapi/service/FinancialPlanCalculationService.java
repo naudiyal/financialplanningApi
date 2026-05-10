@@ -164,6 +164,11 @@ public class FinancialPlanCalculationService {
         double totalNextMonthBalance = financialPlanData.creditAccounts().stream()
             .mapToDouble(this::calculateNextMonthBalance)
             .sum();
+        double savingsNextMonthCreditCardTotal = financialPlanData.creditAccounts().stream()
+            .mapToDouble(account -> account.statementCycledAfterPayment()
+                ? account.lastStatementBalance()
+                : account.creditLimit() - account.availableCredit())
+            .sum();
         double totalUtilization = totalCreditLimit > 0 ? (totalDue / totalCreditLimit) * 100 : 0;
 
         List<ExpenseItem> allExpenses = new ArrayList<>();
@@ -183,6 +188,7 @@ public class FinancialPlanCalculationService {
         double expenseGrandTotal = totalCurrentMonthPayment + debitCardExpensesTotalCurrent;
         double nextMonthExpenseGrandTotal = totalNextMonthBalance + debitCardExpensesTotalNext;
         double monthAfterNextMonthExpense = totalDue - totalCurrentMonthPayment - totalNextMonthBalance + debitCardExpensesTotalNext;
+        double savingsNextMonthExpenseTotal = savingsNextMonthCreditCardTotal + debitCardExpensesTotalNext;
 
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
         double salaryTransferToChase = biMonthlySalary * 2;
@@ -208,7 +214,7 @@ public class FinancialPlanCalculationService {
             totalCurrentMonthPayment + defaultBankDebitExpensesCurrent
         );
         double netBalanceMonthEnd = checkingAccountBalanceMonthEndChase + chaseCdBalance + checkingAccountBalancePnc + additionalOtherIncome;
-        double savingsNextMonth = salaryTransferToChase + otherBanksSalaryTransferTotal - nextMonthExpenseGrandTotal;
+        double savingsNextMonth = salaryTransferToChase + otherBanksSalaryTransferTotal - savingsNextMonthExpenseTotal;
 
         return new FinancialPlanSummary(
             roundCurrency(totalAvailableCredit),
