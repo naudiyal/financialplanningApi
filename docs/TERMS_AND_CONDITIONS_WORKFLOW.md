@@ -47,5 +47,5 @@ The table does not store the Terms and Conditions text.
 ## Related Behavior
 
 - Terms acceptance is required before plan loading and tracker access.
-- First-time encrypted setup includes an Exit path that resets accepted terms and signs the user out.
-- Exiting first-time setup forces the user to accept the current terms version again on the next sign-in.
+- First-time encrypted setup includes an Exit path that signs the user out (no server-side Terms reset).
+- Exiting first-time setup does not force re-acceptance unless the required Terms version changes.
