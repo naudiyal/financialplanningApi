@@ -316,6 +316,7 @@ public class FinancialPlanCalculationService {
                 item.label(),
                 advanceIsoDateByOneMonth(item.payDate()),
                 item.payFromBankId(),
+                false,
                 item.next(),
                 item.next()
             ))

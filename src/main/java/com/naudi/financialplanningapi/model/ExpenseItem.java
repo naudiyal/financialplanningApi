@@ -5,6 +5,7 @@ public record ExpenseItem(
     String label,
     String payDate,
     String payFromBankId,
+    Boolean paid,
     double current,
     double next
 ) {

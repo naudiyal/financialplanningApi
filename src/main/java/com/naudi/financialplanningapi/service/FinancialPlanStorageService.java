@@ -149,6 +149,7 @@ public class FinancialPlanStorageService {
         new ColumnLabel("expense", "Expense"),
         new ColumnLabel("pay-date", "Pay Date"),
         new ColumnLabel("pay-from", "Pay From"),
+        new ColumnLabel("paid", "Paid"),
         new ColumnLabel("current-month", "Current Month"),
         new ColumnLabel("next-month", "Next Month")
     );
@@ -2657,6 +2658,7 @@ public class FinancialPlanStorageService {
                 item.label(),
                 item.payDate(),
                 normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds),
+                item.paid() != null ? item.paid() : Math.abs(item.current()) < 0.004,
                 item.current(),
                 item.next()
             ));
