@@ -37,6 +37,9 @@ Admin-only endpoints:
 - `PUT /api/financial-plan/users/{userSub}/premium`
   - request body: `{ "premium": true | false }`
   - updates the target user's premium status
+- `GET /api/financial-plan/viewer?userSub=...&cycle=...`
+  - returns the selected user's current or visible closed-cycle snapshot for the admin viewer flow
+  - if the stored tracker data is encrypted, the response preserves the encrypted wrapper fields so the UI can require that user's Encryption Key before rendering any financial data
 
 ## Closed-Cycle Selection Versus Revert
 
