@@ -2,6 +2,8 @@
 
 This document summarizes the backend behavior added for premium cycle visibility, admin user-type management, and persisted debit-expense paid state.
 
+It also covers the admin tracker-viewing and tracker-deletion flows that depend on these same user-summary endpoints.
+
 ## User Types
 
 - `Regular` users can see:
@@ -39,7 +41,12 @@ Admin-only endpoints:
   - updates the target user's premium status
 - `GET /api/financial-plan/viewer?userSub=...&cycle=...`
   - returns the selected user's current or visible closed-cycle snapshot for the admin viewer flow
+  - the Trackers UI calls this as soon as an admin selects a user
   - if the stored tracker data is encrypted, the response preserves the encrypted wrapper fields so the UI can require that user's Encryption Key before rendering any financial data
+- `DELETE /api/financial-plan/users/{userSub}`
+  - permanently deletes the target user's saved tracker data
+  - used by the admin `Delete User Tracker` flow after the admin searches by email and confirms the user's first and last name in the UI
+  - this removes tracker data, but does not clear the user's settings row or premium flag by itself
 
 ## Closed-Cycle Selection Versus Revert
 
