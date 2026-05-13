@@ -10,6 +10,7 @@ import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.model.RestoreBackupRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
+import com.naudi.financialplanningapi.model.UserPremiumStatusRequest;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
 import java.util.List;
 import com.naudi.financialplanningapi.model.EncryptedHistoryItem;
@@ -39,7 +40,7 @@ public class FinancialPlanController {
         Authentication authentication,
         @RequestParam(defaultValue = "current") String cycle
     ) {
-        return financialPlanStorageService.load(authentication, CycleSlot.fromParameter(cycle));
+        return financialPlanStorageService.load(authentication, cycle);
     }
 
     @GetMapping("/users")
@@ -53,7 +54,16 @@ public class FinancialPlanController {
         @RequestParam String userSub,
         @RequestParam(defaultValue = "current") String cycle
     ) {
-        return financialPlanStorageService.loadViewerPlan(authentication, userSub, CycleSlot.fromParameter(cycle));
+        return financialPlanStorageService.loadViewerPlan(authentication, userSub, cycle);
+    }
+
+    @PutMapping("/users/{userSub}/premium")
+    public FinancialPlanViewerUserSummary updateViewerUserPremium(
+        Authentication authentication,
+        @PathVariable String userSub,
+        @RequestBody UserPremiumStatusRequest request
+    ) {
+        return financialPlanStorageService.updateViewerUserPremium(authentication, userSub, request);
     }
 
     @GetMapping("/history")
@@ -79,7 +89,7 @@ public class FinancialPlanController {
         @RequestParam(defaultValue = "current") String cycle,
         @RequestParam TimelineType timelineType
     ) {
-        return financialPlanStorageService.loadSample(authentication, CycleSlot.fromParameter(cycle), timelineType);
+        return financialPlanStorageService.loadSample(authentication, cycle, timelineType);
     }
 
     @GetMapping("/sample/history")

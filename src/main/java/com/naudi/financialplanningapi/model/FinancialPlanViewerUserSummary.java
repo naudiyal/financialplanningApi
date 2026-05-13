@@ -7,6 +7,7 @@ public record FinancialPlanViewerUserSummary(
     String email,
     String displayName,
     Instant lastUpdatedAt,
-    boolean encryptionExempt
+    boolean encryptionExempt,
+    boolean premium
 ) {
 }
