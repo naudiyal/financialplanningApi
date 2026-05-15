@@ -3,6 +3,7 @@ package com.naudi.financialplanningapi.model;
 public record AuthUserResponse(
     boolean authenticated,
     boolean admin,
+    boolean premium,
     boolean encryptionExempt,
     boolean termsAccepted,
     String requiredTermsVersion,
@@ -13,6 +14,6 @@ public record AuthUserResponse(
     String pictureUrl
 ) {
     public static AuthUserResponse unauthenticated() {
-        return new AuthUserResponse(false, false, false, false, null, null, null, null, null, null);
+        return new AuthUserResponse(false, false, false, false, false, null, null, null, null, null, null);
     }
 }

@@ -127,12 +127,14 @@ public class AuthController {
     private AuthUserResponse buildAuthResponse(AuthenticatedUser authenticatedUser) {
         TermsAcceptance termsAcceptance = currentTermsAcceptance(authenticatedUser.userSub());
         boolean admin = AdminEmails.contains(adminAllowedEmails, authenticatedUser.email());
+        boolean premium = isPremiumUser(authenticatedUser.userSub());
         boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
         boolean termsAccepted = termsAcceptance != null;
 
         return new AuthUserResponse(
             true,
             admin,
+            premium,
             encryptionExempt,
             termsAccepted,
             currentTermsVersion,
@@ -142,6 +144,18 @@ public class AuthController {
             authenticatedUser.displayName(),
             authenticatedUser.pictureUrl()
         );
+    }
+
+    private boolean isPremiumUser(String userSub) {
+        return jdbcClient.sql("""
+            SELECT COALESCE(is_premium, false)
+            FROM app_user_financial_plan_settings
+            WHERE user_sub = :userSub
+            """)
+            .param("userSub", userSub)
+            .query(Boolean.class)
+            .optional()
+            .orElse(false);
     }
 
     private TermsAcceptance currentTermsAcceptance(String userSub) {
