@@ -295,6 +295,7 @@ public class FinancialPlanStorageService {
             }
 
             FinancialPlanData normalizedData = normalizeIds(financialPlanData);
+            validateRequiredPaycheckDates(normalizedData);
             FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
             upsertSettings(authenticatedUser, timelineType);
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, enrichedData);
@@ -2147,11 +2148,67 @@ public class FinancialPlanStorageService {
     }
 
     private boolean canCloseCycle(FinancialPlanData financialPlanData) {
+        if (!hasRequiredPaycheckDates(financialPlanData)) {
+            return false;
+        }
+
         boolean allCreditAccountsClosed = financialPlanData.creditAccounts().stream()
             .allMatch(account -> account.paidThisMonth() && account.statementCycledAfterPayment());
         boolean allCurrentDebitExpensesCleared = allExpenseItems(financialPlanData).stream()
             .allMatch(item -> Math.abs(item.current()) < CLOSE_CYCLE_CURRENT_EXPENSE_TOLERANCE);
         return !financialPlanData.creditAccounts().isEmpty() && allCreditAccountsClosed && allCurrentDebitExpensesCleared;
+    }
+
+    private void validateRequiredPaycheckDates(FinancialPlanData financialPlanData) {
+        if (!hasRequiredPaycheckDates(financialPlanData)) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Enter Paycheck Arrived Dates?"
+            );
+        }
+    }
+
+    private boolean hasRequiredPaycheckDates(FinancialPlanData financialPlanData) {
+        if (financialPlanData == null || hasEncryptedPayload(financialPlanData)) {
+            return true;
+        }
+
+        boolean defaultBankHasRequiredDates = incomeAmountFor(financialPlanData.incomeItems(), "bi-monthly-salary") <= 0
+            || (isIsoLocalDate(financialPlanData.firstPaycheckDate()) && isIsoLocalDate(financialPlanData.secondPaycheckDate()));
+
+        if (!defaultBankHasRequiredDates) {
+            return false;
+        }
+
+        return financialPlanData.incomeSubsections().stream().allMatch(subsection ->
+            subsection.biMonthlySalary() <= 0
+                || (isIsoLocalDate(subsection.firstPaycheckDate()) && isIsoLocalDate(subsection.secondPaycheckDate()))
+        );
+    }
+
+    private double incomeAmountFor(List<IncomeItem> incomeItems, String id) {
+        if (incomeItems == null) {
+            return 0;
+        }
+
+        return incomeItems.stream()
+            .filter(item -> id.equals(item.id()))
+            .mapToDouble(IncomeItem::amount)
+            .findFirst()
+            .orElse(0);
+    }
+
+    private boolean isIsoLocalDate(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        try {
+            LocalDate.parse(value);
+            return true;
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     private List<ExpenseItem> allExpenseItems(FinancialPlanData financialPlanData) {
@@ -2260,6 +2317,8 @@ public class FinancialPlanStorageService {
             normalizeColumnLabels(financialPlanData.columnLabels()),
             normalizeSectionTitles(financialPlanData.sectionTitles()),
             normalizeViewModes(financialPlanData.viewModes()),
+            normalizeOptionalDate(financialPlanData.firstPaycheckDate()),
+            normalizeOptionalDate(financialPlanData.secondPaycheckDate()),
             normalizedIncomeSubsections,
             financialPlanData.summary(),
             null, null, null, null
@@ -2281,8 +2340,10 @@ public class FinancialPlanStorageService {
                 normalizeIncomeSubsectionBiMonthlySalaryLabel(subsection.biMonthlySalaryLabel()),
                 subsection.biMonthlySalary(),
                 normalizeIncomeSubsectionMidMonthSalaryLabel(subsection.midMonthSalaryLabel()),
+                normalizeOptionalDate(subsection.firstPaycheckDate()),
                 subsection.midMonthSalaryArrived(),
                 normalizeIncomeSubsectionMonthEndSalaryLabel(subsection.monthEndSalaryLabel()),
+                normalizeOptionalDate(subsection.secondPaycheckDate()),
                 subsection.monthEndSalaryArrived(),
                 normalizeIncomeSubsectionCheckingBalanceLabel(subsection.checkingBalanceLabel()),
                 subsection.checkingBalance(),
@@ -2296,6 +2357,15 @@ public class FinancialPlanStorageService {
         }
 
         return normalized;
+    }
+
+    private String normalizeOptionalDate(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmedValue = value.trim();
+        return trimmedValue.isEmpty() ? null : trimmedValue;
     }
 
     private String normalizeIncomeSubsectionBiMonthlySalaryLabel(String label) {

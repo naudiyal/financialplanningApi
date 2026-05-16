@@ -30,7 +30,7 @@ public class FinancialPlanCalculationService {
                 false,
                 false,
                 advanceIsoDateByOneMonth(account.lastStatementDate()),
-                calculateNextMonthBalance(account),
+                account.lastStatementBalance(),
                 account.creditLimit()
             ))
             .toList();
@@ -51,6 +51,8 @@ public class FinancialPlanCalculationService {
             financialPlanData.columnLabels(),
             financialPlanData.sectionTitles(),
             financialPlanData.viewModes(),
+            null,
+            null,
             refreshedIncomeSubsections,
             financialPlanData.summary(),
             null, null, null, null
@@ -72,6 +74,8 @@ public class FinancialPlanCalculationService {
             financialPlanData.columnLabels(),
             financialPlanData.sectionTitles(),
             financialPlanData.viewModes(),
+            financialPlanData.firstPaycheckDate(),
+            financialPlanData.secondPaycheckDate(),
             financialPlanData.incomeSubsections(),
             summary,
             null, null, null, null
@@ -294,8 +298,10 @@ public class FinancialPlanCalculationService {
                 subsection.biMonthlySalaryLabel(),
                 subsection.biMonthlySalary(),
                 subsection.midMonthSalaryLabel(),
+                null,
                 false,
                 subsection.monthEndSalaryLabel(),
+                null,
                 false,
                 subsection.checkingBalanceLabel(),
                 subsection.checkingBalance(),

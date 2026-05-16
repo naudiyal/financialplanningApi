@@ -14,6 +14,8 @@ public record FinancialPlanData(
     FinancialPlanColumnLabels columnLabels,
     FinancialPlanSectionTitles sectionTitles,
     FinancialPlanViewModes viewModes,
+    String firstPaycheckDate,
+    String secondPaycheckDate,
     List<IncomeSubsection> incomeSubsections,
     FinancialPlanSummary summary,
     String encryptedData,

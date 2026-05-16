@@ -45,7 +45,7 @@ The UI now also displays the stored `lastStatementBalance` in all cases. There i
 
 ## Close Cycle Carry-Forward
 
-When a cycle is closed, the new cycle's `lastStatementBalance` is seeded with the computed **Next Balance** (not the raw stored value). This ensures the displayed value at the start of the new cycle reflects what was actually owed.
+When a cycle is closed, the new cycle keeps the stored `lastStatementBalance` unchanged. The close-cycle carry-forward does not overwrite it with the computed **Next Balance**.
 
 ---
 
