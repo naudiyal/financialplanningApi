@@ -2163,7 +2163,7 @@ public class FinancialPlanStorageService {
         if (!hasRequiredPaycheckDates(financialPlanData)) {
             throw new ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Enter Paycheck Arrived Dates?"
+                "Enter Paycheck Dates"
             );
         }
     }
