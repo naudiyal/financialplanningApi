@@ -16,6 +16,7 @@ public record FinancialPlanData(
     FinancialPlanViewModes viewModes,
     String firstPaycheckDate,
     String secondPaycheckDate,
+    Double defaultBankWarningThreshold,
     List<IncomeSubsection> incomeSubsections,
     FinancialPlanSummary summary,
     String encryptedData,

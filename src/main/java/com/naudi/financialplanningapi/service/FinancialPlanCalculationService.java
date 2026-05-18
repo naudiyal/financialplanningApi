@@ -53,6 +53,7 @@ public class FinancialPlanCalculationService {
             financialPlanData.viewModes(),
             null,
             null,
+            financialPlanData.defaultBankWarningThreshold(),
             refreshedIncomeSubsections,
             financialPlanData.summary(),
             null, null, null, null
@@ -76,6 +77,7 @@ public class FinancialPlanCalculationService {
             financialPlanData.viewModes(),
             financialPlanData.firstPaycheckDate(),
             financialPlanData.secondPaycheckDate(),
+            financialPlanData.defaultBankWarningThreshold(),
             financialPlanData.incomeSubsections(),
             summary,
             null, null, null, null
@@ -305,6 +307,7 @@ public class FinancialPlanCalculationService {
                 false,
                 subsection.checkingBalanceLabel(),
                 subsection.checkingBalance(),
+                subsection.warningThreshold(),
                 subsection.additionalPaymentsLabel(),
                 subsection.additionalPayments(),
                 subsection.totalBalanceLabel(),

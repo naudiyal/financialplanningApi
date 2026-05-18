@@ -73,6 +73,7 @@ public class FinancialPlanStorageService {
     private static final String PREVIOUS_SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
     private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
     private static final double CLOSE_CYCLE_CURRENT_EXPENSE_TOLERANCE = 0.004d;
+    private static final double DEFAULT_BANK_WARNING_THRESHOLD = 100d;
     private static final int MAX_HISTORY_LIMIT = 24;
     private static final int PREMIUM_VISIBLE_CLOSED_CYCLE_COUNT = 12;
     private static final int REGULAR_VISIBLE_CLOSED_CYCLE_COUNT = 1;
@@ -2319,6 +2320,7 @@ public class FinancialPlanStorageService {
             normalizeViewModes(financialPlanData.viewModes()),
             normalizeOptionalDate(financialPlanData.firstPaycheckDate()),
             normalizeOptionalDate(financialPlanData.secondPaycheckDate()),
+            normalizeWarningThreshold(financialPlanData.defaultBankWarningThreshold()),
             normalizedIncomeSubsections,
             financialPlanData.summary(),
             null, null, null, null
@@ -2347,6 +2349,7 @@ public class FinancialPlanStorageService {
                 subsection.monthEndSalaryArrived(),
                 normalizeIncomeSubsectionCheckingBalanceLabel(subsection.checkingBalanceLabel()),
                 subsection.checkingBalance(),
+                normalizeWarningThreshold(subsection.warningThreshold()),
                 normalizeIncomeSubsectionAdditionalPaymentsLabel(subsection.additionalPaymentsLabel()),
                 subsection.additionalPayments(),
                 normalizeIncomeSubsectionTotalBalanceLabel(subsection.totalBalanceLabel()),
@@ -2357,6 +2360,10 @@ public class FinancialPlanStorageService {
         }
 
         return normalized;
+    }
+
+    private double normalizeWarningThreshold(Double value) {
+        return value != null && value >= 0 ? value : DEFAULT_BANK_WARNING_THRESHOLD;
     }
 
     private String normalizeOptionalDate(String value) {

@@ -13,6 +13,7 @@ public record IncomeSubsection(
     boolean monthEndSalaryArrived,
     String checkingBalanceLabel,
     double checkingBalance,
+    Double warningThreshold,
     String additionalPaymentsLabel,
     double additionalPayments,
     String totalBalanceLabel,
