@@ -2,6 +2,8 @@ package com.naudi.financialplanningapi.controller;
 
 import com.naudi.financialplanningapi.model.AcceptTermsRequest;
 import com.naudi.financialplanningapi.model.AuthUserResponse;
+import com.naudi.financialplanningapi.model.TabAuthTokenResponse;
+import com.naudi.financialplanningapi.security.TabSessionTokenService;
 import com.naudi.financialplanningapi.support.AdminEmails;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
@@ -29,14 +31,17 @@ public class AuthController {
     private final Set<String> encryptionExemptEmails;
     private final JdbcClient jdbcClient;
     private final String currentTermsVersion;
+    private final TabSessionTokenService tabSessionTokenService;
 
     public AuthController(
         JdbcClient jdbcClient,
+        TabSessionTokenService tabSessionTokenService,
         @Value("${app.admin.emails:naudiyal@gmail.com}") String adminAllowedEmails,
         @Value("${app.encryption.exempt.emails:}") String encryptionExemptEmails,
         @Value("${app.terms.current-version:2026-05-02-v1}") String currentTermsVersion
     ) {
         this.jdbcClient = jdbcClient;
+        this.tabSessionTokenService = tabSessionTokenService;
         this.adminAllowedEmails = AdminEmails.parse(adminAllowedEmails);
         this.encryptionExemptEmails = AdminEmails.parse(encryptionExemptEmails);
         this.currentTermsVersion = currentTermsVersion;
@@ -50,6 +55,23 @@ public class AuthController {
         }
 
         return buildAuthResponse(authenticatedUser);
+    }
+
+    @PostMapping("/tab-token")
+    public TabAuthTokenResponse issueTabToken(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is required");
+        }
+
+        return new TabAuthTokenResponse(
+            tabSessionTokenService.issueToken(
+                authenticatedUser.userSub(),
+                authenticatedUser.email(),
+                authenticatedUser.displayName(),
+                authenticatedUser.pictureUrl()
+            )
+        );
     }
 
     @PostMapping("/terms/accept")
@@ -140,6 +162,7 @@ public class AuthController {
             currentTermsVersion,
             termsAccepted ? currentTermsVersion : null,
             termsAccepted ? termsAcceptance.acceptedAt().toString() : null,
+            authenticatedUser.userSub(),
             authenticatedUser.email(),
             authenticatedUser.displayName(),
             authenticatedUser.pictureUrl()

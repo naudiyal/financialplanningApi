@@ -14,7 +14,10 @@ import com.naudi.financialplanningapi.model.UserPremiumStatusRequest;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
 import java.util.List;
 import com.naudi.financialplanningapi.model.EncryptedHistoryItem;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +27,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/financial-plan")
@@ -148,43 +153,61 @@ public class FinancialPlanController {
     @PutMapping
     public FinancialPlanCycleResponse saveFinancialPlan(
         Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
         @RequestParam(defaultValue = "current") String cycle,
         @RequestBody FinancialPlanData financialPlanData
     ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.save(authentication, CycleSlot.fromParameter(cycle), financialPlanData);
     }
 
     @PostMapping("/restore-backup")
     public FinancialPlanCycleResponse restoreBackup(
         Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
         @RequestBody RestoreBackupRequest restoreBackupRequest
     ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.restoreBackup(authentication, restoreBackupRequest);
     }
 
     @PostMapping("/close-cycle")
-    public FinancialPlanCycleResponse closeCycle(Authentication authentication, @RequestBody CloseCycleRequest closeCycleRequest) {
+    public FinancialPlanCycleResponse closeCycle(
+        Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
+        @RequestBody CloseCycleRequest closeCycleRequest
+    ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.closeCycle(authentication, closeCycleRequest);
     }
 
     @PostMapping("/revert-close-cycle")
     public FinancialPlanCycleResponse revertCloseCycle(
         Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
         @RequestBody RevertCloseCycleRequest revertCloseCycleRequest
     ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.revertCloseCycle(authentication, revertCloseCycleRequest);
     }
 
     @PostMapping("/switch-timeline")
     public FinancialPlanCycleResponse switchTimeline(
         Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
         @RequestBody SwitchTimelineRequest switchTimelineRequest
     ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.switchTimeline(authentication, switchTimelineRequest);
     }
 
     @PutMapping("/history/bulk-encrypt")
-    public void bulkEncryptHistory(Authentication authentication, @RequestBody List<EncryptedHistoryItem> items) {
+    public void bulkEncryptHistory(
+        Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
+        @RequestBody List<EncryptedHistoryItem> items
+    ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
         financialPlanStorageService.bulkEncryptHistory(authentication, items);
     }
 
@@ -196,5 +219,35 @@ public class FinancialPlanController {
     @DeleteMapping("/users/{userSub}")
     public void deleteUserFinancialPlan(Authentication authentication, @PathVariable String userSub) {
         financialPlanStorageService.deleteAsAdmin(authentication, userSub);
+    }
+
+    private void requireExpectedUserSub(Authentication authentication, String expectedUserSub) {
+        if (expectedUserSub == null || expectedUserSub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Expected user identity is required");
+        }
+
+        String authenticatedUserSub = authenticatedUserSub(authentication);
+        if (!expectedUserSub.equals(authenticatedUserSub)) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Your signed-in session changed in another browser window. Reload before saving."
+            );
+        }
+    }
+
+    private String authenticatedUserSub(Authentication authentication) {
+        if (authentication == null
+            || !authentication.isAuthenticated()
+            || authentication instanceof AnonymousAuthenticationToken
+            || !(authentication.getPrincipal() instanceof OAuth2User oauth2User)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is required");
+        }
+
+        Object userSub = oauth2User.getAttribute("sub");
+        if (userSub == null || userSub.toString().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is missing sub claim");
+        }
+
+        return userSub.toString();
     }
 }

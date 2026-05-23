@@ -12,8 +12,9 @@ Current behavior:
 2. The UI checks `/api/auth/me`.
 3. If the user is not authenticated, the UI shows a Google sign-in screen.
 4. The user signs in through Google.
-5. Spring Security creates a session.
-6. The frontend loads the application using authenticated API requests.
+5. Spring Security creates a Google-backed browser session.
+6. The frontend exchanges that session for a tab-scoped bearer token through `/api/auth/tab-token`.
+7. The frontend stores that token in `sessionStorage` and uses it for authenticated API requests from that tab.
 
 ## What Changed
 
@@ -35,7 +36,10 @@ Summary:
 3. Protected financial-plan API endpoints.
 4. Added `/api/auth/me` for auth status.
 5. Added `/api/auth/logout` for sign-out.
-6. Enabled CORS credentials for the frontend.
+6. Added `/api/auth/tab-token` to mint a signed tab-scoped bearer token from the current Google session.
+7. Added bearer-token authentication for `/api/**` requests so different tabs can use different signed-in accounts.
+8. Added `X-Expected-User-Sub` validation on personal write endpoints so stale tabs cannot save data into the wrong account.
+9. Enabled CORS credentials for the frontend.
 
 ### Frontend
 
@@ -48,9 +52,27 @@ Summary:
 
 1. Added a login gate.
 2. Added a Google sign-in screen.
-3. Added authenticated fetches with `credentials: 'include'`.
-4. Added logout support.
-5. Added signed-in user display in the UI.
+3. Added a tab-token bootstrap step after Google sign-in.
+4. Added authenticated fetches that attach `Authorization: Bearer <tab token>`.
+5. Added expected-user headers on personal write requests.
+6. Added logout support.
+7. Added signed-in user display in the UI.
+
+## Per-Tab Auth Behavior
+
+The original Google login integration relied only on the shared browser session cookie. That meant two tabs in the same browser profile could silently start using whichever account had most recently signed in, which was unsafe for encrypted personal saves.
+
+The current flow keeps the Google session for login handoff, but each tab now receives its own signed bearer token and stores it in `sessionStorage`.
+
+This means:
+
+1. Different tabs or windows in the same browser profile can stay signed into different accounts at the same time.
+2. Personal write endpoints are still guarded by the authenticated Google `sub` value to block stale or mismatched saves.
+3. If the backend is restarted and no fixed tab-token secret is configured, previously issued tab tokens become invalid and the tab must refresh or sign in again.
+
+Optional stability setting:
+
+- Set `APP_AUTH_TAB_TOKEN_SECRET` for local or deployed environments if you want tab tokens to survive backend restarts instead of being invalidated on each process start.
 
 ## Google Cloud Setup That Was Done
 
@@ -81,6 +103,7 @@ Run from [FinancialPlanningApi](/c:/Users/naudi/workspace/FinancialPlanning/Fina
 $env:GOOGLE_CLIENT_ID="your-client-id"
 $env:GOOGLE_CLIENT_SECRET="your-client-secret"
 $env:APP_UI_URL="http://localhost:5173"
+$env:APP_AUTH_TAB_TOKEN_SECRET="replace-with-a-long-random-secret"
 mvn spring-boot:run
 ```
 
@@ -88,7 +111,8 @@ Notes:
 
 1. These environment variables are session-scoped in PowerShell.
 2. If you open a new terminal, set them again unless you persisted them with `setx`.
-3. If port `8080` is already in use, stop the stale Java process before starting the backend again.
+3. `APP_AUTH_TAB_TOKEN_SECRET` is recommended so existing tab tokens remain valid across backend restarts.
+4. If port `8080` is already in use, stop the stale Java process before starting the backend again.
 
 ### Frontend
 
@@ -109,6 +133,7 @@ Open:
 3. Backend auth status endpoint returned success.
 4. Google sign-in worked locally.
 5. After login, the application loaded successfully.
+6. Separate tabs could keep different signed-in accounts without sharing the same effective API identity.
 
 ## Current Limitations
 
