@@ -97,7 +97,15 @@ Authorized redirect URI:
 
 ### Backend
 
-Run from [FinancialPlanningApi](/c:/Users/naudi/workspace/FinancialPlanning/FinancialPlanningApi):
+A local run helper is available at `FinancialPlanningApi/run-local-api.bat`:
+
+```powershell
+.\run-local-api.bat
+```
+
+This script stops any existing local API process, runs `mvn clean install`, then starts `spring-boot:run`. It automatically loads Google OAuth credentials from the local client secret JSON file in the workspace root (the one configured with the `localhost:8080` redirect URI), so manual `$env:GOOGLE_*` setup is no longer required in this workspace.
+
+Alternatively, run manually with explicit env vars:
 
 ```powershell
 $env:GOOGLE_CLIENT_ID="your-client-id"
@@ -112,7 +120,7 @@ Notes:
 1. These environment variables are session-scoped in PowerShell.
 2. If you open a new terminal, set them again unless you persisted them with `setx`.
 3. `APP_AUTH_TAB_TOKEN_SECRET` is recommended so existing tab tokens remain valid across backend restarts.
-4. If port `8080` is already in use, stop the stale Java process before starting the backend again.
+4. If port `8080` is already in use, stop the stale Java process before starting the backend again. `run-local-api.bat` does this automatically.
 
 ### Frontend
 
