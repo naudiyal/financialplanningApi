@@ -24,6 +24,8 @@ import com.naudi.financialplanningapi.model.IncomeSubsection;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import com.naudi.financialplanningapi.model.RevertCloseCycleRequest;
 import com.naudi.financialplanningapi.model.RestoreBackupRequest;
+import com.naudi.financialplanningapi.model.RestoreMultiCycleBackupRequest;
+import com.naudi.financialplanningapi.model.CycleBackupEntry;
 import com.naudi.financialplanningapi.model.SwitchTimelineRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
 import com.naudi.financialplanningapi.model.UserPremiumStatusRequest;
@@ -353,7 +355,6 @@ public class FinancialPlanStorageService {
             FinancialPlanData enrichedCurrentData = financialPlanCalculationService.withCalculatedSummary(normalizedCurrentData);
 
             upsertSettings(authenticatedUser, timelineType);
-            deleteArchivedClosedCycles(authenticatedUser.userSub(), timelineType);
             upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, enrichedCurrentData);
 
             CyclePeriod previousPeriod = null;
@@ -385,6 +386,44 @@ public class FinancialPlanStorageService {
                     .update();
             }
 
+            // Archive additional cycles from allCycles if present (premium multi-cycle restore)
+            List<CycleBackupEntry> allCycles = restoreBackupRequest.allCycles();
+            if (allCycles != null && !allCycles.isEmpty()) {
+                deleteArchivedClosedCycles(authenticatedUser.userSub(), timelineType);
+                List<CycleBackupEntry> sorted = new ArrayList<>(allCycles);
+                sorted.sort((a, b) -> b.cycle().startDate().compareTo(a.cycle().startDate()));
+                for (int i = 2; i < sorted.size(); i++) {
+                    CycleBackupEntry entry = sorted.get(i);
+                    if (entry.data() == null) continue;
+                    FinancialPlanData normalized = normalizeIds(entry.data());
+                    FinancialPlanData enriched = financialPlanCalculationService.withCalculatedSummary(normalized);
+                    String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(enriched);
+                    jdbcClient.sql("""
+                            INSERT INTO app_user_financial_plan_cycle_archive (
+                                user_sub, timeline_type, cycle_start_date, cycle_end_date,
+                                email, display_name, plan_data
+                            ) VALUES (
+                                :userSub, :timelineType, :cycleStartDate, :cycleEndDate,
+                                :email, :displayName, CAST(:planData AS jsonb)
+                            )
+                            ON CONFLICT (user_sub, timeline_type, cycle_start_date, cycle_end_date)
+                                DO UPDATE SET
+                                    email = EXCLUDED.email,
+                                    display_name = EXCLUDED.display_name,
+                                    plan_data = EXCLUDED.plan_data,
+                                    updated_at = NOW()
+                            """)
+                        .param("userSub", authenticatedUser.userSub())
+                        .param("timelineType", timelineType.name())
+                        .param("cycleStartDate", entry.cycle().startDate())
+                        .param("cycleEndDate", entry.cycle().endDate())
+                        .param("email", authenticatedUser.email())
+                        .param("displayName", authenticatedUser.displayName())
+                        .param("planData", planJson)
+                        .update();
+                }
+            }
+
             StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
             StoredCycle savedPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
             CyclePeriod resolvedPrevious = savedPreviousCycle != null
@@ -407,6 +446,113 @@ public class FinancialPlanStorageService {
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to restore backup", exception);
+        }
+    }
+
+    @Transactional
+    public FinancialPlanCycleResponse restoreMultiCycleBackup(Authentication authentication, RestoreMultiCycleBackupRequest request) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        try {
+            TimelineType timelineType = request.timelineType() != null
+                ? request.timelineType()
+                : timelineTypeFor(authenticatedUser.userSub());
+
+            boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
+
+            List<CycleBackupEntry> cycles = request.cycles();
+            if (cycles == null || cycles.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one cycle is required");
+            }
+
+            // Sort by start date descending (newest first = current)
+            List<CycleBackupEntry> sorted = new ArrayList<>(cycles);
+            sorted.sort((a, b) -> b.cycle().startDate().compareTo(a.cycle().startDate()));
+
+            FinancialPlanData currentData = null;
+            CyclePeriod currentPeriod = null;
+            CyclePeriod previousPeriod = null;
+
+            for (int i = 0; i < sorted.size(); i++) {
+                CycleBackupEntry entry = sorted.get(i);
+                if (entry.data() == null) continue;
+
+                FinancialPlanData normalized = normalizeIds(entry.data());
+                FinancialPlanData enriched = financialPlanCalculationService.withCalculatedSummary(normalized);
+
+                if (i == 0) {
+                    // First (newest) = CURRENT
+                    currentData = enriched;
+                    currentPeriod = entry.cycle();
+                    upsertSettings(authenticatedUser, timelineType);
+                    deleteArchivedClosedCycles(authenticatedUser.userSub(), timelineType);
+                    upsertPlan(authenticatedUser, CycleSlot.CURRENT, currentPeriod, currentData);
+                } else if (i == 1) {
+                    // Second = PREVIOUS
+                    previousPeriod = entry.cycle();
+                    upsertPlan(authenticatedUser, CycleSlot.PREVIOUS, previousPeriod, enriched);
+                } else {
+                    // Older = archived closed cycle
+                    String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(enriched);
+                    jdbcClient.sql("""
+                            INSERT INTO app_user_financial_plan_cycle_archive (
+                                user_sub,
+                                timeline_type,
+                                cycle_start_date,
+                                cycle_end_date,
+                                email,
+                                display_name,
+                                plan_data
+                            )
+                            VALUES (
+                                :userSub,
+                                :timelineType,
+                                :cycleStartDate,
+                                :cycleEndDate,
+                                :email,
+                                :displayName,
+                                CAST(:planData AS jsonb)
+                            )
+                            ON CONFLICT (user_sub, timeline_type, cycle_start_date, cycle_end_date)
+                                DO UPDATE SET
+                                    email = EXCLUDED.email,
+                                    display_name = EXCLUDED.display_name,
+                                    plan_data = EXCLUDED.plan_data,
+                                    updated_at = NOW()
+                            """)
+                        .param("userSub", authenticatedUser.userSub())
+                        .param("timelineType", timelineType.name())
+                        .param("cycleStartDate", entry.cycle().startDate())
+                        .param("cycleEndDate", entry.cycle().endDate())
+                        .param("email", authenticatedUser.email())
+                        .param("displayName", authenticatedUser.displayName())
+                        .param("planData", planJson)
+                        .update();
+                }
+            }
+
+            if (currentData == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No valid cycle data found in backup");
+            }
+
+            StoredCycle savedCurrentCycle = loadStoredCycle(authenticatedUser, CycleSlot.CURRENT);
+            StoredCycle savedPreviousCycle = loadStoredCycle(authenticatedUser, CycleSlot.PREVIOUS);
+
+            return buildResponse(
+                currentData,
+                CycleSlot.CURRENT,
+                timelineType,
+                currentPeriod,
+                previousPeriod,
+                true,
+                canCloseCycle(currentData),
+                savedCurrentCycle,
+                savedPreviousCycle,
+                authenticatedUser.userSub(),
+                isPremiumUser(authenticatedUser.userSub()),
+                null
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to restore multi-cycle backup", exception);
         }
     }
 
@@ -1129,175 +1275,6 @@ public class FinancialPlanStorageService {
         }
     }
 
-    @Transactional
-    public int normalizeAllPlans(Authentication authentication) {
-        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureAdminAccess(authenticatedUser);
-
-        List<StoredPlanRow> storedPlans = jdbcClient.sql("""
-                SELECT user_sub, cycle_slot, plan_data::text
-                FROM app_user_financial_plan_cycle
-                """)
-            .query((resultSet, rowNum) -> new StoredPlanRow(
-                resultSet.getString("user_sub"),
-                resultSet.getString("cycle_slot"),
-                resultSet.getString("plan_data")
-            ))
-            .list();
-
-        int updatedCount = 0;
-        for (StoredPlanRow storedPlan : storedPlans) {
-            try {
-                FinancialPlanData storedData = objectMapper.readValue(storedPlan.planDataJson(), FinancialPlanData.class);
-                FinancialPlanData normalizedData = normalizeIds(storedData);
-                FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
-                String planJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(enrichedData);
-
-                jdbcClient.sql("""
-                        UPDATE app_user_financial_plan_cycle
-                        SET plan_data = CAST(:planData AS jsonb),
-                            updated_at = NOW()
-                        WHERE user_sub = :userSub
-                          AND cycle_slot = :cycleSlot
-                        """)
-                    .param("planData", planJson)
-                    .param("userSub", storedPlan.userSub())
-                    .param("cycleSlot", storedPlan.cycleSlot())
-                    .update();
-
-                updatedCount++;
-            } catch (IOException exception) {
-                throw new IllegalStateException(
-                    "Failed to normalize stored cycle for user " + storedPlan.userSub() + " and slot " + storedPlan.cycleSlot(),
-                    exception
-                );
-            }
-        }
-
-        return updatedCount;
-    }
-
-    @Transactional
-    public int repairStartToEndCycleDates(Authentication authentication) {
-        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
-        ensureAdminAccess(authenticatedUser);
-
-        List<StoredCycleDateRow> liveRows = jdbcClient.sql("""
-                SELECT cycle.user_sub, cycle.cycle_slot, cycle.cycle_start_date, cycle.cycle_end_date
-                FROM app_user_financial_plan_cycle cycle
-                JOIN app_user_financial_plan_settings settings
-                  ON settings.user_sub = cycle.user_sub
-                WHERE settings.timeline_type = 'START_TO_END'
-                """)
-            .query((resultSet, rowNum) -> new StoredCycleDateRow(
-                resultSet.getString("user_sub"),
-                resultSet.getString("cycle_slot"),
-                resultSet.getObject("cycle_start_date", LocalDate.class),
-                resultSet.getObject("cycle_end_date", LocalDate.class)
-            ))
-            .list();
-
-        int updatedCount = 0;
-        for (StoredCycleDateRow liveRow : liveRows) {
-            CyclePeriod correctedCyclePeriod = correctedStartToEndCyclePeriod(liveRow.cycleEndDate());
-            if (liveRow.cycleStartDate().equals(correctedCyclePeriod.startDate())
-                && liveRow.cycleEndDate().equals(correctedCyclePeriod.endDate())) {
-                continue;
-            }
-
-            jdbcClient.sql("""
-                    UPDATE app_user_financial_plan_cycle
-                    SET cycle_start_date = :cycleStartDate,
-                        cycle_end_date = :cycleEndDate,
-                        updated_at = NOW()
-                    WHERE user_sub = :userSub
-                      AND cycle_slot = :cycleSlot
-                    """)
-                .param("cycleStartDate", correctedCyclePeriod.startDate())
-                .param("cycleEndDate", correctedCyclePeriod.endDate())
-                .param("userSub", liveRow.userSub())
-                .param("cycleSlot", liveRow.cycleSlot())
-                .update();
-
-            updatedCount++;
-        }
-
-        List<StoredHistoryDateRow> historyRows = jdbcClient.sql("""
-                SELECT user_sub, timeline_type, cycle_start_date, cycle_end_date, email, display_name, history_data::text
-                FROM app_user_financial_plan_cycle_history
-                WHERE timeline_type = 'START_TO_END'
-                """)
-            .query((resultSet, rowNum) -> new StoredHistoryDateRow(
-                resultSet.getString("user_sub"),
-                resultSet.getString("timeline_type"),
-                resultSet.getObject("cycle_start_date", LocalDate.class),
-                resultSet.getObject("cycle_end_date", LocalDate.class),
-                resultSet.getString("email"),
-                resultSet.getString("display_name"),
-                resultSet.getString("history_data")
-            ))
-            .list();
-
-        for (StoredHistoryDateRow historyRow : historyRows) {
-            CyclePeriod correctedCyclePeriod = correctedStartToEndCyclePeriod(historyRow.cycleEndDate());
-            if (historyRow.cycleStartDate().equals(correctedCyclePeriod.startDate())
-                && historyRow.cycleEndDate().equals(correctedCyclePeriod.endDate())) {
-                continue;
-            }
-
-            jdbcClient.sql("""
-                    INSERT INTO app_user_financial_plan_cycle_history (
-                        user_sub,
-                        timeline_type,
-                        cycle_start_date,
-                        cycle_end_date,
-                        email,
-                        display_name,
-                        history_data
-                    )
-                    VALUES (
-                        :userSub,
-                        :timelineType,
-                        :cycleStartDate,
-                        :cycleEndDate,
-                        :email,
-                        :displayName,
-                        CAST(:historyData AS jsonb)
-                    )
-                    ON CONFLICT (user_sub, timeline_type, cycle_start_date, cycle_end_date)
-                    DO UPDATE SET
-                        email = EXCLUDED.email,
-                        display_name = EXCLUDED.display_name,
-                        history_data = EXCLUDED.history_data,
-                        updated_at = NOW()
-                    """)
-                .param("userSub", historyRow.userSub())
-                .param("timelineType", historyRow.timelineType())
-                .param("cycleStartDate", correctedCyclePeriod.startDate())
-                .param("cycleEndDate", correctedCyclePeriod.endDate())
-                .param("email", historyRow.email())
-                .param("displayName", historyRow.displayName())
-                .param("historyData", historyRow.historyDataJson())
-                .update();
-
-            jdbcClient.sql("""
-                    DELETE FROM app_user_financial_plan_cycle_history
-                    WHERE user_sub = :userSub
-                      AND timeline_type = :timelineType
-                      AND cycle_start_date = :oldCycleStartDate
-                      AND cycle_end_date = :oldCycleEndDate
-                    """)
-                .param("userSub", historyRow.userSub())
-                .param("timelineType", historyRow.timelineType())
-                .param("oldCycleStartDate", historyRow.cycleStartDate())
-                .param("oldCycleEndDate", historyRow.cycleEndDate())
-                .update();
-
-            updatedCount++;
-        }
-
-        return updatedCount;
-    }
 
     private FinancialPlanData buildSeededPlan() throws IOException {
         FinancialPlanData defaultData = readNewUserTemplate();

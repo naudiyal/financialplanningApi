@@ -6,7 +6,6 @@ import com.naudi.financialplanningapi.model.CreditAccount;
 import com.naudi.financialplanningapi.model.ExpenseItem;
 import com.naudi.financialplanningapi.model.FinancialPlanData;
 import com.naudi.financialplanningapi.model.FinancialPlanSectionTitles;
-import com.naudi.financialplanningapi.model.FinancialPlanSummary;
 import com.naudi.financialplanningapi.model.IncomeItem;
 import com.naudi.financialplanningapi.model.IncomeSubsection;
 import java.util.ArrayList;
@@ -61,27 +60,7 @@ public class FinancialPlanCalculationService {
     }
 
     public FinancialPlanData withCalculatedSummary(FinancialPlanData financialPlanData) {
-        if (financialPlanData.encryptedData() != null) {
-            return financialPlanData;
-        }
-        FinancialPlanSummary summary = calculateSummary(financialPlanData);
-        return new FinancialPlanData(
-            financialPlanData.creditAccounts(),
-            financialPlanData.incomeItems(),
-            financialPlanData.balanceItems(),
-            financialPlanData.planoExpenses(),
-            financialPlanData.sanfordExpenses(),
-            financialPlanData.otherExpenses(),
-            financialPlanData.columnLabels(),
-            financialPlanData.sectionTitles(),
-            financialPlanData.viewModes(),
-            financialPlanData.firstPaycheckDate(),
-            financialPlanData.secondPaycheckDate(),
-            financialPlanData.defaultBankWarningThreshold(),
-            financialPlanData.incomeSubsections(),
-            summary,
-            null, null, null, null
-        );
+        return financialPlanData;
     }
 
     public List<BankBalanceHistoryPoint> buildBankBalanceHistoryPoints(FinancialPlanData financialPlanData) {
@@ -149,116 +128,6 @@ public class FinancialPlanCalculationService {
         }
 
         return historyPoints;
-    }
-
-    private FinancialPlanSummary calculateSummary(FinancialPlanData financialPlanData) {
-        double totalAvailableCredit = financialPlanData.creditAccounts().stream()
-            .mapToDouble(CreditAccount::availableCredit)
-            .sum();
-        double totalStatementBalance = financialPlanData.creditAccounts().stream()
-            .mapToDouble(CreditAccount::lastStatementBalance)
-            .sum();
-        double totalCreditLimit = financialPlanData.creditAccounts().stream()
-            .mapToDouble(CreditAccount::creditLimit)
-            .sum();
-        double totalDue = financialPlanData.creditAccounts().stream()
-            .mapToDouble(account -> account.creditLimit() - account.availableCredit())
-            .sum();
-        double totalCurrentMonthPayment = financialPlanData.creditAccounts().stream()
-            .mapToDouble(account -> account.paidThisMonth() ? 0 : account.lastStatementBalance())
-            .sum();
-        double totalNextMonthBalance = financialPlanData.creditAccounts().stream()
-            .mapToDouble(this::calculateNextMonthBalance)
-            .sum();
-        double savingsNextMonthCreditCardTotal = financialPlanData.creditAccounts().stream()
-            .mapToDouble(account -> account.statementCycledAfterPayment()
-                ? account.lastStatementBalance()
-                : account.creditLimit() - account.availableCredit())
-            .sum();
-        double totalUtilization = totalCreditLimit > 0 ? (totalDue / totalCreditLimit) * 100 : 0;
-
-        List<ExpenseItem> allExpenses = new ArrayList<>();
-        allExpenses.addAll(financialPlanData.planoExpenses());
-        allExpenses.addAll(financialPlanData.sanfordExpenses());
-        allExpenses.addAll(financialPlanData.otherExpenses());
-        Set<String> validExpensePayFromIds = new HashSet<>();
-        validExpensePayFromIds.add(DEFAULT_BANK_EXPENSE_SOURCE_ID);
-        financialPlanData.incomeSubsections().forEach(subsection -> validExpensePayFromIds.add(subsection.id()));
-
-        double debitCardExpensesTotalCurrent = allExpenses.stream().mapToDouble(ExpenseItem::current).sum();
-        double debitCardExpensesTotalNext = allExpenses.stream().mapToDouble(ExpenseItem::next).sum();
-        double defaultBankDebitExpensesCurrent = allExpenses.stream()
-            .filter(item -> DEFAULT_BANK_EXPENSE_SOURCE_ID.equals(normalizeExpensePayFromId(item.payFromBankId(), validExpensePayFromIds)))
-            .mapToDouble(ExpenseItem::current)
-            .sum();
-        double expenseGrandTotal = totalCurrentMonthPayment + debitCardExpensesTotalCurrent;
-        double nextMonthExpenseGrandTotal = totalNextMonthBalance + debitCardExpensesTotalNext;
-        double monthAfterNextMonthExpense = totalDue - totalCurrentMonthPayment - totalNextMonthBalance + debitCardExpensesTotalNext;
-        double savingsNextMonthExpenseTotal = savingsNextMonthCreditCardTotal + debitCardExpensesTotalNext;
-
-        double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
-        double salaryTransferToChase = biMonthlySalary * 2;
-        double otherBanksSalaryTransferTotal = financialPlanData.incomeSubsections().stream()
-            .mapToDouble(subsection -> subsection.biMonthlySalary() * 2)
-            .sum();
-        double salaryTransfersToPnc = 2000 * 2;
-        double totalSalaryPerMonth = salaryTransferToChase;
-        double firstPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "first-paycheck") == 0 ? 0 : biMonthlySalary;
-        double secondPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "second-paycheck") == 0 ? 0 : biMonthlySalary;
-
-        double checkingAccountBalanceChase = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-chase");
-        double additionalPaymentsChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-payments-chase");
-        double additionalIncomeChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-income-chase");
-        double chaseCdBalance = findBalanceAmount(financialPlanData.balanceItems(), "chase-cd-balance");
-        double checkingAccountBalancePnc = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-pnc");
-        double additionalOtherIncome = findBalanceAmount(financialPlanData.balanceItems(), "additional-other-income");
-
-        double totalBalanceChase = firstPaycheck + secondPaycheck + checkingAccountBalanceChase - additionalPaymentsChase;
-        double checkingAccountBalanceMonthEndChase = calculateBankMonthEndBalance(
-            totalBalanceChase,
-            additionalIncomeChase,
-            totalCurrentMonthPayment + defaultBankDebitExpensesCurrent
-        );
-        double netBalanceMonthEnd = checkingAccountBalanceMonthEndChase + chaseCdBalance + checkingAccountBalancePnc + additionalOtherIncome;
-        double savingsNextMonth = salaryTransferToChase + otherBanksSalaryTransferTotal - savingsNextMonthExpenseTotal;
-
-        return new FinancialPlanSummary(
-            roundCurrency(totalAvailableCredit),
-            roundCurrency(totalStatementBalance),
-            roundCurrency(totalCreditLimit),
-            roundCurrency(totalDue),
-            roundCurrency(totalCurrentMonthPayment),
-            roundCurrency(totalNextMonthBalance),
-            roundPercentage(totalUtilization),
-            roundCurrency(debitCardExpensesTotalCurrent),
-            roundCurrency(debitCardExpensesTotalNext),
-            roundCurrency(expenseGrandTotal),
-            roundCurrency(nextMonthExpenseGrandTotal),
-            roundCurrency(monthAfterNextMonthExpense),
-            roundCurrency(salaryTransferToChase),
-            roundCurrency(salaryTransfersToPnc),
-            roundCurrency(totalSalaryPerMonth),
-            roundCurrency(totalBalanceChase),
-            roundCurrency(checkingAccountBalanceMonthEndChase),
-            roundCurrency(netBalanceMonthEnd),
-            roundCurrency(savingsNextMonth)
-        );
-    }
-
-    private double calculateNextMonthBalance(CreditAccount account) {
-        double totalDueForCard = account.creditLimit() - account.availableCredit();
-        if (account.paidThisMonth()) {
-            if (account.nextPaymentDate().compareTo(account.lastStatementDate()) < 0) {
-                // payment is before statement in this cycle
-                return account.statementCycledAfterPayment()
-                    ? totalDueForCard - account.lastStatementBalance()
-                    : totalDueForCard;
-            } else {
-                // statement is before payment
-                return totalDueForCard;
-            }
-        }
-        return totalDueForCard - account.lastStatementBalance();
     }
 
     private double calculateIncomeSubsectionStartingBalance(IncomeSubsection subsection) {

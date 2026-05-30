@@ -9,6 +9,7 @@ import com.naudi.financialplanningapi.model.CycleSlot;
 import com.naudi.financialplanningapi.model.FinancialPlanCycleResponse;
 import com.naudi.financialplanningapi.model.FinancialPlanViewerUserSummary;
 import com.naudi.financialplanningapi.model.RestoreBackupRequest;
+import com.naudi.financialplanningapi.model.RestoreMultiCycleBackupRequest;
 import com.naudi.financialplanningapi.model.TimelineType;
 import com.naudi.financialplanningapi.model.UserPremiumStatusRequest;
 import com.naudi.financialplanningapi.service.FinancialPlanStorageService;
@@ -169,6 +170,16 @@ public class FinancialPlanController {
     ) {
         requireExpectedUserSub(authentication, expectedUserSub);
         return financialPlanStorageService.restoreBackup(authentication, restoreBackupRequest);
+    }
+
+    @PostMapping("/restore-multi-cycle-backup")
+    public FinancialPlanCycleResponse restoreMultiCycleBackup(
+        Authentication authentication,
+        @RequestHeader("X-Expected-User-Sub") String expectedUserSub,
+        @RequestBody RestoreMultiCycleBackupRequest request
+    ) {
+        requireExpectedUserSub(authentication, expectedUserSub);
+        return financialPlanStorageService.restoreMultiCycleBackup(authentication, request);
     }
 
     @PostMapping("/close-cycle")

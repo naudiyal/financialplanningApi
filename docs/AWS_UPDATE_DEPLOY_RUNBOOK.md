@@ -33,6 +33,7 @@ Recent operational note:
 - stale-label fixes required API deployment plus rerunning the admin normalization endpoint
 - earlier Bank Balance Movement math and label fixes were UI-only changes and required `promote-ui-aws.bat` plus a hard browser refresh after deployment
 - the newer Change in Bank Balance redesign is not UI-only because the UI now depends on API response fields for `currentData` and `previousData`; deploy `promote-api-aws.bat` first, then `promote-ui-aws.bat`
+- the follow-up fix for premium users missing older closed-cycle points at login is UI-only; it prefetches all visible closed cycles for the chart, so `promote-ui-aws.bat` is sufficient
 
 SQL handling rule:
 
