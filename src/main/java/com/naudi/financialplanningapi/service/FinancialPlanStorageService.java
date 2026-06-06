@@ -2300,6 +2300,7 @@ public class FinancialPlanStorageService {
             normalizeWarningThreshold(financialPlanData.defaultBankWarningThreshold()),
             normalizedIncomeSubsections,
             financialPlanData.summary(),
+            financialPlanData.notes(),
             null, null, null, null
         );
     }

@@ -55,6 +55,7 @@ public class FinancialPlanCalculationService {
             financialPlanData.defaultBankWarningThreshold(),
             refreshedIncomeSubsections,
             financialPlanData.summary(),
+            financialPlanData.notes(),
             null, null, null, null
         ));
     }

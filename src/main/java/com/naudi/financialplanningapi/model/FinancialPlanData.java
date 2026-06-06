@@ -19,6 +19,7 @@ public record FinancialPlanData(
     Double defaultBankWarningThreshold,
     List<IncomeSubsection> incomeSubsections,
     FinancialPlanSummary summary,
+    String notes,
     String encryptedData,
     String encryptionIv,
     String pinVerify,
