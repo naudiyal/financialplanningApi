@@ -8,6 +8,7 @@ public record FinancialPlanViewerUserSummary(
     String displayName,
     Instant lastUpdatedAt,
     boolean encryptionExempt,
-    boolean premium
+    boolean premium,
+    boolean allowAdminEdit
 ) {
 }

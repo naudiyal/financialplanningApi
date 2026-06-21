@@ -63,6 +63,16 @@ public class FinancialPlanController {
         return financialPlanStorageService.loadViewerPlan(authentication, userSub, cycle);
     }
 
+    @PutMapping("/viewer")
+    public FinancialPlanCycleResponse saveViewerFinancialPlan(
+        Authentication authentication,
+        @RequestParam String userSub,
+        @RequestParam(defaultValue = "current") String cycle,
+        @RequestBody FinancialPlanData financialPlanData
+    ) {
+        return financialPlanStorageService.saveAsAdmin(authentication, userSub, cycle, financialPlanData);
+    }
+
     @PutMapping("/users/{userSub}/premium")
     public FinancialPlanViewerUserSummary updateViewerUserPremium(
         Authentication authentication,

@@ -150,6 +150,7 @@ public class AuthController {
         TermsAcceptance termsAcceptance = currentTermsAcceptance(authenticatedUser.userSub());
         boolean admin = AdminEmails.contains(adminAllowedEmails, authenticatedUser.email());
         boolean premium = isPremiumUser(authenticatedUser.userSub());
+        boolean allowAdminEdit = isAllowAdminEdit(authenticatedUser.userSub());
         boolean encryptionExempt = AdminEmails.contains(encryptionExemptEmails, authenticatedUser.email());
         boolean termsAccepted = termsAcceptance != null;
 
@@ -157,6 +158,7 @@ public class AuthController {
             true,
             admin,
             premium,
+            allowAdminEdit,
             encryptionExempt,
             termsAccepted,
             currentTermsVersion,
@@ -167,6 +169,66 @@ public class AuthController {
             authenticatedUser.displayName(),
             authenticatedUser.pictureUrl()
         );
+    }
+
+    @PostMapping("/admin-edit/enable")
+    public AuthUserResponse enableAdminEdit(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is required");
+        }
+
+        jdbcClient.sql("""
+            INSERT INTO app_user_financial_plan_settings (user_sub, email, display_name, timeline_type, allow_admin_edit)
+            VALUES (
+                :userSub,
+                :email,
+                :displayName,
+                'START_TO_END',
+                TRUE
+            )
+            ON CONFLICT (user_sub)
+                DO UPDATE SET
+                    allow_admin_edit = TRUE,
+                    updated_at = NOW()
+            """)
+            .param("userSub", authenticatedUser.userSub())
+            .param("email", authenticatedUser.email())
+            .param("displayName", authenticatedUser.displayName())
+            .update();
+
+        return buildAuthResponse(authenticatedUser);
+    }
+
+    @PostMapping("/admin-edit/disable")
+    public AuthUserResponse disableAdminEdit(Authentication authentication) {
+        AuthenticatedUser authenticatedUser = authenticatedUser(authentication);
+        if (authenticatedUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated Google user is required");
+        }
+
+        jdbcClient.sql("""
+            UPDATE app_user_financial_plan_settings
+            SET allow_admin_edit = FALSE,
+                updated_at = NOW()
+            WHERE user_sub = :userSub
+            """)
+            .param("userSub", authenticatedUser.userSub())
+            .update();
+
+        return buildAuthResponse(authenticatedUser);
+    }
+
+    private boolean isAllowAdminEdit(String userSub) {
+        return jdbcClient.sql("""
+            SELECT COALESCE(allow_admin_edit, false)
+            FROM app_user_financial_plan_settings
+            WHERE user_sub = :userSub
+            """)
+            .param("userSub", userSub)
+            .query(Boolean.class)
+            .optional()
+            .orElse(false);
     }
 
     private boolean isPremiumUser(String userSub) {

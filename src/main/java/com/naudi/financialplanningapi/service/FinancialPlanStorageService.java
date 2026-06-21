@@ -579,7 +579,8 @@ public class FinancialPlanStorageService {
                                                                                          MAX(NULLIF(cycles.display_name, '')) AS display_name,
                                                                                          MAX(cycles.updated_at) AS last_updated_at,
                                                                                          BOOL_OR(COALESCE(NULLIF(cycles.plan_data->>'encryptedData', ''), '') <> '') AS has_encrypted_data,
-                                                                                         COALESCE(MAX(CASE WHEN settings.is_premium THEN 1 ELSE 0 END), 0) = 1 AS is_premium
+                                                                                         COALESCE(MAX(CASE WHEN settings.is_premium THEN 1 ELSE 0 END), 0) = 1 AS is_premium,
+                                                                                         COALESCE(MAX(CASE WHEN settings.allow_admin_edit THEN 1 ELSE 0 END), 0) = 1 AS allow_admin_edit
                                 FROM app_user_financial_plan_cycle cycles
                                 LEFT JOIN app_user_financial_plan_settings settings
                                     ON settings.user_sub = cycles.user_sub
@@ -598,7 +599,8 @@ public class FinancialPlanStorageService {
                     ? resultSet.getTimestamp("last_updated_at").toInstant()
                     : null,
                 !resultSet.getBoolean("has_encrypted_data"),
-                resultSet.getBoolean("is_premium")
+                resultSet.getBoolean("is_premium"),
+                resultSet.getBoolean("allow_admin_edit")
             ))
             .list();
     }
@@ -646,6 +648,7 @@ public class FinancialPlanStorageService {
             ? cyclePeriodFor(currentCycle, CycleSlot.CURRENT, viewerTimelineType)
             : nextCyclePeriod(resolvedPreviousCycle);
         boolean viewerHasSavedPlan = hasSavedPlan(currentCycle != null ? currentCycle : previousCycle);
+        boolean adminCanEdit = viewerSettings.allowAdminEdit();
 
         ResolvedClosedCycle selectedClosedCycle = resolveSelectedClosedCycle(
             userSub,
@@ -682,7 +685,7 @@ public class FinancialPlanStorageService {
                 resolvedPreviousCycle,
                 viewerHasSavedPlan,
                 false,
-                true,
+                !adminCanEdit,
                 currentCycle,
                 previousCycle,
                 userSub,
@@ -699,13 +702,80 @@ public class FinancialPlanStorageService {
             resolvedPreviousCycle,
             viewerHasSavedPlan,
             false,
-            true,
+            !adminCanEdit,
             currentCycle,
             previousCycle,
             userSub,
             viewerSettings.premium(),
             null
         );
+    }
+
+    @Transactional
+    public FinancialPlanCycleResponse saveAsAdmin(Authentication authentication, String userSub, String cycleSelection, FinancialPlanData financialPlanData) {
+        AuthenticatedUser adminUser = authenticatedUser(authentication);
+        ensureAdminAccess(adminUser);
+
+        if (userSub == null || userSub.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target user is required");
+        }
+
+        UserSettings viewerSettings = userSettingsFor(userSub);
+        if (!viewerSettings.allowAdminEdit()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This user has not granted admin edit permission");
+        }
+
+        FinancialPlanViewerUserSummary viewerSummary = loadViewerUserSummary(userSub);
+        AuthenticatedUser targetUser = new AuthenticatedUser(
+            viewerSummary.userSub(),
+            viewerSummary.email(),
+            viewerSummary.displayName()
+        );
+
+        try {
+            TimelineType timelineType = viewerSettings.timelineType();
+            StoredCycle currentCycle = loadStoredCycle(userSub, CycleSlot.CURRENT);
+            StoredCycle previousCycle = loadStoredCycle(userSub, CycleSlot.PREVIOUS);
+            CyclePeriod currentPeriod = cyclePeriodFor(currentCycle, CycleSlot.CURRENT, timelineType);
+
+            CycleSlot cycleSlot = CycleSlot.fromParameter(cycleSelection);
+            if (cycleSlot == CycleSlot.PREVIOUS) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Previous cycle is read only");
+            }
+
+            if (currentCycle != null
+                && hasEncryptedPayload(currentCycle.financialPlanData())
+                && !hasEncryptedPayload(financialPlanData)) {
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "This tracker is encrypted. Unlock it with the user's Encryption Key before saving."
+                );
+            }
+
+            FinancialPlanData normalizedData = normalizeIds(financialPlanData);
+            validateRequiredPaycheckDates(normalizedData);
+            FinancialPlanData enrichedData = financialPlanCalculationService.withCalculatedSummary(normalizedData);
+            upsertSettings(targetUser, timelineType);
+            upsertPlan(targetUser, CycleSlot.CURRENT, currentPeriod, enrichedData);
+            StoredCycle savedCurrentCycle = loadStoredCycle(userSub, CycleSlot.CURRENT);
+
+            return buildResponse(
+                enrichedData,
+                CycleSlot.CURRENT,
+                timelineType,
+                currentPeriod,
+                previousCycle != null ? cyclePeriodFor(previousCycle, CycleSlot.PREVIOUS, timelineType) : null,
+                true,
+                canCloseCycle(enrichedData),
+                savedCurrentCycle,
+                previousCycle,
+                userSub,
+                viewerSettings.premium(),
+                null
+            );
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to save financial plan data", exception);
+        }
     }
 
     public BankBalanceHistoryResponse loadBankBalanceHistory(Authentication authentication, Integer limit) {
@@ -1810,17 +1880,18 @@ public class FinancialPlanStorageService {
 
     private UserSettings userSettingsFor(String userSub) {
         return jdbcClient.sql("""
-                SELECT timeline_type, is_premium
+                SELECT timeline_type, is_premium, COALESCE(allow_admin_edit, false) AS allow_admin_edit
                 FROM app_user_financial_plan_settings
                 WHERE user_sub = :userSub
                 """)
             .param("userSub", userSub)
             .query((resultSet, rowNum) -> new UserSettings(
                 TimelineType.fromStoredValue(resultSet.getString("timeline_type")),
-                resultSet.getBoolean("is_premium")
+                resultSet.getBoolean("is_premium"),
+                resultSet.getBoolean("allow_admin_edit")
             ))
             .optional()
-            .orElse(new UserSettings(TimelineType.START_TO_END, false));
+            .orElse(new UserSettings(TimelineType.START_TO_END, false, false));
     }
 
     private TimelineType timelineTypeFor(String userSub) {
@@ -2021,6 +2092,29 @@ public class FinancialPlanStorageService {
             .update();
     }
 
+    private void upsertAllowAdminEdit(String userSub, boolean allowAdminEdit) {
+        TimelineType timelineType = timelineTypeFor(userSub);
+
+        jdbcClient.sql("""
+            INSERT INTO app_user_financial_plan_settings (user_sub, email, display_name, timeline_type, allow_admin_edit)
+            VALUES (
+                :userSub,
+                COALESCE((SELECT MAX(NULLIF(email, '')) FROM app_user_financial_plan_cycle WHERE user_sub = :userSub), ''),
+                COALESCE((SELECT MAX(NULLIF(display_name, '')) FROM app_user_financial_plan_cycle WHERE user_sub = :userSub), ''),
+                :timelineType,
+                :allowAdminEdit
+            )
+            ON CONFLICT (user_sub)
+                DO UPDATE SET
+                    allow_admin_edit = EXCLUDED.allow_admin_edit,
+                    updated_at = NOW()
+            """)
+            .param("userSub", userSub)
+            .param("timelineType", timelineType.name())
+            .param("allowAdminEdit", allowAdminEdit)
+            .update();
+    }
+
     private FinancialPlanViewerUserSummary loadViewerUserSummary(String userSub) {
         return jdbcClient.sql("""
                 SELECT cycles.user_sub,
@@ -2028,7 +2122,8 @@ public class FinancialPlanStorageService {
                        MAX(NULLIF(cycles.display_name, '')) AS display_name,
                        MAX(cycles.updated_at) AS last_updated_at,
                        BOOL_OR(COALESCE(NULLIF(cycles.plan_data->>'encryptedData', ''), '') <> '') AS has_encrypted_data,
-                       COALESCE(MAX(CASE WHEN settings.is_premium THEN 1 ELSE 0 END), 0) = 1 AS is_premium
+                       COALESCE(MAX(CASE WHEN settings.is_premium THEN 1 ELSE 0 END), 0) = 1 AS is_premium,
+                       COALESCE(MAX(CASE WHEN settings.allow_admin_edit THEN 1 ELSE 0 END), 0) = 1 AS allow_admin_edit
                 FROM app_user_financial_plan_cycle cycles
                 LEFT JOIN app_user_financial_plan_settings settings
                   ON settings.user_sub = cycles.user_sub
@@ -2044,7 +2139,8 @@ public class FinancialPlanStorageService {
                     ? resultSet.getTimestamp("last_updated_at").toInstant()
                     : null,
                 !resultSet.getBoolean("has_encrypted_data"),
-                resultSet.getBoolean("is_premium")
+                resultSet.getBoolean("is_premium"),
+                resultSet.getBoolean("allow_admin_edit")
             ))
             .optional()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Viewed user was not found"));
@@ -2228,7 +2324,7 @@ public class FinancialPlanStorageService {
     private record AuthenticatedUser(String userSub, String email, String displayName) {
     }
 
-    private record UserSettings(TimelineType timelineType, boolean premium) {
+    private record UserSettings(TimelineType timelineType, boolean premium, boolean allowAdminEdit) {
     }
 
     private record ResolvedClosedCycle(FinancialPlanData financialPlanData, CyclePeriod cyclePeriod) {
