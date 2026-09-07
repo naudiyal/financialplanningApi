@@ -52,6 +52,8 @@ public class FinancialPlanCalculationService {
             financialPlanData.viewModes(),
             null,
             null,
+            null,
+            false,
             financialPlanData.defaultBankWarningThreshold(),
             refreshedIncomeSubsections,
             financialPlanData.summary(),
@@ -71,6 +73,7 @@ public class FinancialPlanCalculationService {
         double biMonthlySalary = findIncomeAmount(financialPlanData.incomeItems(), "bi-monthly-salary");
         double firstPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "first-paycheck") == 0 ? 0 : biMonthlySalary;
         double secondPaycheck = findIncomeAmount(financialPlanData.incomeItems(), "second-paycheck") == 0 ? 0 : biMonthlySalary;
+        double thirdPaycheck = (!isIsoLocalDate(financialPlanData.thirdPaycheckDate()) || findIncomeAmount(financialPlanData.incomeItems(), "third-paycheck") == 0) ? 0 : biMonthlySalary;
         double checkingAccountBalanceChase = findBalanceAmount(financialPlanData.balanceItems(), "checking-balance-chase");
         double additionalPaymentsChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-payments-chase");
         double additionalIncomeChase = findBalanceAmount(financialPlanData.balanceItems(), "additional-income-chase");
@@ -99,7 +102,7 @@ public class FinancialPlanCalculationService {
                 ? "Default Bank"
                 : sectionTitles.defaultBank();
         double defaultBankMonthEndBalanceMinusDues = calculateBankMonthEndBalance(
-            firstPaycheck + secondPaycheck + checkingAccountBalanceChase - additionalPaymentsChase,
+            firstPaycheck + secondPaycheck + thirdPaycheck + checkingAccountBalanceChase - additionalPaymentsChase,
             additionalIncomeChase,
             defaultBankCurrentDues
         );
@@ -134,8 +137,9 @@ public class FinancialPlanCalculationService {
     private double calculateIncomeSubsectionStartingBalance(IncomeSubsection subsection) {
         double firstPaycheck = subsection.midMonthSalaryArrived() ? 0 : subsection.biMonthlySalary();
         double secondPaycheck = subsection.monthEndSalaryArrived() ? 0 : subsection.biMonthlySalary();
+        double thirdPaycheck = (subsection.thirdPaycheckArrived() || subsection.thirdPaycheckDate() == null || subsection.thirdPaycheckDate().isBlank()) ? 0 : subsection.biMonthlySalary();
 
-        return subsection.checkingBalance() + firstPaycheck + secondPaycheck;
+        return subsection.checkingBalance() + firstPaycheck + secondPaycheck + thirdPaycheck;
     }
 
     private double calculateIncomeSubsectionTotalBalance(IncomeSubsection subsection) {
@@ -147,7 +151,7 @@ public class FinancialPlanCalculationService {
 
         return incomeItems.stream()
             .map(item -> {
-                if ("first-paycheck".equals(item.id()) || "second-paycheck".equals(item.id())) {
+                if ("first-paycheck".equals(item.id()) || "second-paycheck".equals(item.id()) || "third-paycheck".equals(item.id())) {
                     return new IncomeItem(
                         item.id(),
                         item.label(),
@@ -183,7 +187,12 @@ public class FinancialPlanCalculationService {
                 subsection.totalBalanceLabel(),
                 subsection.additionalIncomeLabel(),
                 subsection.additionalIncome(),
-                subsection.monthEndBalanceLabel()
+                subsection.monthEndBalanceLabel(),
+                subsection.thirdPaycheckLabel(),
+                null,
+                false,
+                subsection.additionalPaycheckExpectedLabel(),
+                false
             ))
             .toList();
     }
@@ -252,4 +261,6 @@ public class FinancialPlanCalculationService {
     private double roundPercentage(double value) {
         return Math.round(value * 10.0) / 10.0;
     }
-}
+    private boolean isIsoLocalDate(String value) {
+        return value != null && value.matches("\\d{4}-\\d{2}-\\d{2}");
+    }}

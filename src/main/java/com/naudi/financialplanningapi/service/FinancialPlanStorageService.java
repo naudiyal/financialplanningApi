@@ -71,6 +71,7 @@ public class FinancialPlanStorageService {
     private static final String LEGACY_NEXT_MONTH_ID = "net-balance-next-month-end";
     private static final String FIRST_PAYCHECK_ID = "first-paycheck";
     private static final String SECOND_PAYCHECK_ID = "second-paycheck";
+    private static final String THIRD_PAYCHECK_ID = "third-paycheck";
     private static final String SAVINGS_NEXT_MONTH_LABEL = "Savings Next Cycle";
     private static final String PREVIOUS_SAVINGS_NEXT_MONTH_LABEL = "Savings Next Month";
     private static final String LEGACY_NEXT_MONTH_LABEL = "Net Balance @Next Month End";
@@ -101,6 +102,7 @@ public class FinancialPlanStorageService {
         "bi-monthly-salary",
         FIRST_PAYCHECK_ID,
         SECOND_PAYCHECK_ID,
+        THIRD_PAYCHECK_ID,
         "salary-transfer-chase-month",
         "salary-transfer-pnc-home-loans",
         "total-salary-per-month"
@@ -140,7 +142,7 @@ public class FinancialPlanStorageService {
         new ColumnLabel("statement-date", "Prev Cycle Stmt Date"),
         new ColumnLabel("pay-date", "Payment Date"),
         new ColumnLabel("paid", "Paid"),
-        new ColumnLabel("statement-cycled", "Stmt for Next Cycle Pymnt Cycled?"),
+        new ColumnLabel("statement-cycled", "Next cycle stmt generated?"),
         new ColumnLabel("statement-balance", "Latest Stmt Balance"),
         new ColumnLabel("credit-limit", "Credit Limit"),
         new ColumnLabel("due", "Total Due"),
@@ -2393,6 +2395,8 @@ public class FinancialPlanStorageService {
             normalizeViewModes(financialPlanData.viewModes()),
             normalizeOptionalDate(financialPlanData.firstPaycheckDate()),
             normalizeOptionalDate(financialPlanData.secondPaycheckDate()),
+            normalizeOptionalDate(financialPlanData.thirdPaycheckDate()),
+            financialPlanData.additionalPaycheckExpectedNextMonth(),
             normalizeWarningThreshold(financialPlanData.defaultBankWarningThreshold()),
             normalizedIncomeSubsections,
             financialPlanData.summary(),
@@ -2429,7 +2433,12 @@ public class FinancialPlanStorageService {
                 normalizeIncomeSubsectionTotalBalanceLabel(subsection.totalBalanceLabel()),
                 normalizeIncomeSubsectionAdditionalIncomeLabel(subsection.additionalIncomeLabel()),
                 subsection.additionalIncome(),
-                normalizeIncomeSubsectionMonthEndBalanceLabel(subsection.monthEndBalanceLabel())
+                normalizeIncomeSubsectionMonthEndBalanceLabel(subsection.monthEndBalanceLabel()),
+                normalizeIncomeSubsectionThirdPaycheckLabel(subsection.thirdPaycheckLabel()),
+                normalizeOptionalDate(subsection.thirdPaycheckDate()),
+                subsection.thirdPaycheckArrived(),
+                normalizeIncomeSubsectionAdditionalPaycheckExpectedLabel(subsection.additionalPaycheckExpectedLabel()),
+                subsection.additionalPaycheckExpectedNextMonth()
             ));
         }
 
@@ -2450,7 +2459,7 @@ public class FinancialPlanStorageService {
     }
 
     private String normalizeIncomeSubsectionBiMonthlySalaryLabel(String label) {
-        return normalizeText(label, "Bi-monthly salary");
+        return normalizeText(label, "Paycheck Amount");
     }
 
     private String normalizeIncomeSubsectionMidMonthSalaryLabel(String label) {
@@ -2513,6 +2522,22 @@ public class FinancialPlanStorageService {
             || "Checking Account Balance @Month End - Chase".equals(label)
             || "Checking account balance month end - Chase".equals(label)) {
             return "Month End Balance minus Dues";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionThirdPaycheckLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return "3rd Paycheck Arrived?";
+        }
+
+        return label;
+    }
+
+    private String normalizeIncomeSubsectionAdditionalPaycheckExpectedLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return "Additional Paycheck Expected Next Month?";
         }
 
         return label;
@@ -2607,8 +2632,9 @@ public class FinancialPlanStorageService {
                 || "Next Payment Stmt Cycled?".equals(label)
                 || "Next Cycle Payment Stmt Cycled?".equals(label)
                 || "Next Cycle Pymnt Stmt Cycled?".equals(label)
-                || "Stmt for Next Cycle Pymnt Cycled?".equals(label))) {
-            return "Stmt for Next Cycle Pymnt Cycled?";
+                || "Stmt for Next Cycle Pymnt Cycled?".equals(label)
+                || "Next cycle stmt generated?".equals(label))) {
+            return "Next cycle stmt generated?";
         }
 
         if ("statement-balance".equals(id) && "Stmt Balance".equals(label)) {
@@ -2760,11 +2786,15 @@ public class FinancialPlanStorageService {
 
     private String normalizeIncomeLabel(String id, String label) {
         if (FIRST_PAYCHECK_ID.equals(id) && shouldNormalizeFirstPaycheckLabel(label)) {
-            return "First Paycheck Arrived?";
+            return "1st Paycheck Arrived?";
         }
 
         if (SECOND_PAYCHECK_ID.equals(id) && shouldNormalizeSecondPaycheckLabel(label)) {
-            return "Second Paycheck Arrived?";
+            return "2nd Paycheck Arrived?";
+        }
+
+        if (THIRD_PAYCHECK_ID.equals(id) && shouldNormalizeThirdPaycheckLabel(label)) {
+            return "3rd Paycheck Arrived?";
         }
 
         return label;
@@ -2790,6 +2820,16 @@ public class FinancialPlanStorageService {
         return (comparableLabel.contains("second") && comparableLabel.contains("pay"))
             || comparableLabel.contains("1st")
             || (comparableLabel.contains("month") && comparableLabel.contains("end") && comparableLabel.contains("salary"));
+    }
+
+    private boolean shouldNormalizeThirdPaycheckLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return true;
+        }
+
+        String comparableLabel = comparableLabel(label);
+        return (comparableLabel.contains("third") && comparableLabel.contains("pay"))
+            || (comparableLabel.contains("3rd") && comparableLabel.contains("pay"));
     }
 
     private String comparableLabel(String label) {

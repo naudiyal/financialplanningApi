@@ -19,6 +19,11 @@ public record IncomeSubsection(
     String totalBalanceLabel,
     String additionalIncomeLabel,
     double additionalIncome,
-    String monthEndBalanceLabel
+    String monthEndBalanceLabel,
+    String thirdPaycheckLabel,
+    String thirdPaycheckDate,
+    boolean thirdPaycheckArrived,
+    String additionalPaycheckExpectedLabel,
+    boolean additionalPaycheckExpectedNextMonth
 ) {
 }

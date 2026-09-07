@@ -133,7 +133,7 @@
   ],
   "incomeItems": [
     {
-      "label": "Bi-mon Sal minus(ESPP + 2 Mortgage Payments)",
+      "label": "Paycheck Amount",
       "amount": 4211.25,
       "month": "",
       "note": null
@@ -146,6 +146,12 @@
     },
     {
       "label": "Second Paycheck Arrived?",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Third Paycheck Arrived?",
       "amount": 0,
       "month": "",
       "note": null

@@ -2,7 +2,7 @@
   "creditAccounts": [],
   "incomeItems": [
     {
-      "label": "Bi-monthly salary",
+      "label": "Paycheck Amount",
       "amount": 0,
       "month": "",
       "note": null
@@ -15,6 +15,12 @@
     },
     {
       "label": "Second Paycheck Arrived?",
+      "amount": 0,
+      "month": "",
+      "note": null
+    },
+    {
+      "label": "Third Paycheck Arrived?",
       "amount": 0,
       "month": "",
       "note": null
